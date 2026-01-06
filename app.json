@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Obby",
+    "slug": "obby",
+    "version": "1.0.0",
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
