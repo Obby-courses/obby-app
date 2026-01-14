@@ -1,7 +1,7 @@
+import React from 'react'
 import {
   View,
   Text,
-  Image,
   Pressable,
   Linking,
   ScrollView,
@@ -14,9 +14,15 @@ import {
   typography,
 } from '@/lib/theme'
 
-type StepResources = {
-  cover_url?: string | null
-  resource_url?: string | null
+/* ================================
+   TIPI
+================================ */
+
+type Resource = {
+  id: string
+  title: string
+  url: string
+  type: string   // ⬅️ NON più union type
 }
 
 type StepItemProps = {
@@ -25,47 +31,46 @@ type StepItemProps = {
     title: string
     description: string | null
     completed: boolean
-    resources: StepResources | null
+    resource: Resource | null
   }
   onToggleCompleted: (id: string, value: boolean) => void
 }
+
+/* ================================
+   COMPONENT
+================================ */
 
 export default function StepItem({
   step,
   onToggleCompleted,
 }: StepItemProps) {
-  const coverUrl = step.resources?.cover_url
-  const resourceUrl = step.resources?.resource_url
+
+  const hasResource = !!step.resource
+
+  const getResourceIcon = (type?: string) => {
+    switch (type) {
+      case 'video': return '📺'
+      case 'article': return '📄'
+      case 'tool': return '🛠️'
+      case 'course': return '🎓'
+      default: return '🔗'
+    }
+  }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.background,
-      }}
-    >
-      {/* HEADER FISSO */}
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      
+      {/* HEADER */}
       <View
         style={{
           paddingHorizontal: layout.cardPadding,
           paddingTop: spacing.md,
           paddingBottom: spacing.sm,
           backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(255,255,255,0.05)',
         }}
       >
-        {coverUrl && (
-          <Image
-            source={{ uri: coverUrl }}
-            resizeMode="cover"
-            style={{
-              width: '100%',
-              height: 120, // 👈 meno spazio
-              borderRadius: radius.md,
-              marginBottom: spacing.xs,
-            }}
-          />
-        )}
-
         <Text
           style={{
             ...typography.small,
@@ -75,27 +80,21 @@ export default function StepItem({
             marginBottom: spacing.xs,
           }}
         >
-          {step.completed ? 'COMPLETATO' : 'DA FARE'}
+          {step.completed ? '✓ COMPLETATO' : '○ DA FARE'}
         </Text>
 
-        <Text
-          style={{
-            ...typography.title,
-            marginBottom: spacing.xs, // 👈 più compatto
-          }}
-        >
+        <Text style={{ ...typography.title }}>
           {step.title}
         </Text>
       </View>
 
-      {/* CONTENUTO SCROLLABILE */}
+      {/* CONTENUTO */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: layout.cardPadding,
-          paddingBottom: 120, // spazio bottone fisso
+          paddingBottom: 120,
         }}
-        showsVerticalScrollIndicator={false}
       >
         {step.description && (
           <Text
@@ -103,28 +102,92 @@ export default function StepItem({
               ...typography.body,
               color: colors.textSecondary,
               marginBottom: spacing.lg,
+              lineHeight: 22,
             }}
           >
             {step.description}
           </Text>
         )}
 
-        {resourceUrl && (
-          <Pressable onPress={() => Linking.openURL(resourceUrl)}>
+        {/* BOX RISORSA */}
+        <View style={{ marginTop: spacing.sm }}>
+          <Text
+            style={{
+              ...typography.small,
+              color: colors.textSecondary,
+              marginBottom: spacing.sm
+            }}
+          >
+            MATERIALE DI STUDIO
+          </Text>
+          
+          <Pressable
+            disabled={!hasResource}
+            onPress={() =>
+              step.resource?.url && Linking.openURL(step.resource.url)
+            }
+            style={({ pressed }) => ({
+              backgroundColor: hasResource ? colors.card : '#222',
+              borderRadius: radius.md,
+              padding: spacing.md,
+              borderWidth: 1,
+              borderColor: hasResource ? 'rgba(255,255,255,0.1)' : 'transparent',
+              opacity: !hasResource ? 0.5 : (pressed ? 0.8 : 1),
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 24, marginRight: spacing.sm }}>
+                {getResourceIcon(step.resource?.type)}
+              </Text>
+              
+              <View style={{ flex: 1 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    ...typography.body,
+                    fontWeight: '700',
+                    color: hasResource
+                      ? colors.accent
+                      : colors.textSecondary,
+                  }}
+                >
+                  {hasResource
+                    ? 'Apri Risorsa Esterna'
+                    : 'Nessuna risorsa'}
+                </Text>
+
+                {hasResource && (
+                  <Text
+                    numberOfLines={2}
+                    style={{
+                      marginTop: 2,
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    {step.resource?.title}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </Pressable>
+          
+          {!hasResource && (
             <Text
               style={{
-                ...typography.body,
-                color: colors.accent,
-                fontWeight: '600',
+                fontSize: 12,
+                color: '#666',
+                marginTop: spacing.xs,
+                textAlign: 'center'
               }}
             >
-              Apri risorsa →
+              Stiamo preparando il materiale per questo step...
             </Text>
-          </Pressable>
-        )}
+          )}
+        </View>
       </ScrollView>
 
-      {/* FOOTER FISSO */}
+      {/* FOOTER */}
       <View
         style={{
           position: 'absolute',
@@ -132,22 +195,25 @@ export default function StepItem({
           right: 0,
           bottom: 0,
           padding: layout.cardPadding,
+          paddingBottom: 30,
           backgroundColor: colors.background,
           borderTopWidth: 1,
-          borderTopColor: '#eee',
+          borderTopColor: 'rgba(255,255,255,0.1)',
         }}
       >
         <Pressable
           onPress={() =>
             onToggleCompleted(step.id, !step.completed)
           }
-          style={{
+          style={({ pressed }) => ({
             backgroundColor: step.completed
               ? colors.successBg
               : colors.primaryButton,
             paddingVertical: spacing.md,
             borderRadius: radius.md,
-          }}
+            opacity: pressed ? 0.9 : 1,
+            transform: [{ scale: pressed ? 0.98 : 1 }]
+          })}
         >
           <Text
             style={{
@@ -159,7 +225,9 @@ export default function StepItem({
                 : '#ffffff',
             }}
           >
-            {step.completed ? 'Completato' : 'Completa'}
+            {step.completed
+              ? 'Step Completato'
+              : 'Segna come completato'}
           </Text>
         </Pressable>
       </View>

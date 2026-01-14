@@ -1,22 +1,29 @@
-import { supabase } from '@/lib/supabase'
-import { colors, spacing, typography } from '@/lib/theme'
+import { useEffect, useRef, useState } from 'react'
+import {
+  View,
+  FlatList,
+  Dimensions,
+  Text,
+  Pressable,
+} from 'react-native'
 import {
   useLocalSearchParams,
   useRouter,
 } from 'expo-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Dimensions,
-  FlatList,
-  Pressable,
-  Text,
-  View,
-} from 'react-native'
+import { supabase } from '@/lib/supabase'
 import StepItem from './StepItem'
+import { colors, spacing, typography } from '@/lib/theme'
 
 const { width } = Dimensions.get('window')
 
 /* ---------------- TYPES ---------------- */
+
+type Resource = {
+  id: string
+  title: string
+  url: string
+  type: string
+}
 
 type Step = {
   id: string
@@ -24,8 +31,9 @@ type Step = {
   description: string | null
   completed: boolean
   order_index: number
-  resources: any | null
   phase_id: string
+  course_id?: string
+  resource: Resource | null
 }
 
 type Phase = {
@@ -40,7 +48,7 @@ function isPhaseCompleted(phaseId: string, steps: Step[]) {
   const phaseSteps = steps.filter(
     (s) => s.phase_id === phaseId
   )
-  if (!phaseSteps.length) return false
+  if (phaseSteps.length === 0) return false
   return phaseSteps.every((s) => s.completed)
 }
 
@@ -52,10 +60,11 @@ function getActivePhase(
     const phaseSteps = steps.filter(
       (s) => s.phase_id === phase.id
     )
-    if (!phaseSteps.length) continue
-    if (phaseSteps.some((s) => !s.completed)) {
-      return phase
-    }
+    if (phaseSteps.length === 0) continue
+    const hasIncomplete = phaseSteps.some(
+      (s) => !s.completed
+    )
+    if (hasIncomplete) return phase
   }
   return null
 }
@@ -70,12 +79,14 @@ export default function CourseScreen() {
   const [courseTitle, setCourseTitle] = useState('')
   const [phases, setPhases] = useState<Phase[]>([])
   const [steps, setSteps] = useState<Step[]>([])
+  const [visibleSteps, setVisibleSteps] = useState<Step[]>([])
+  const [phasesMap, setPhasesMap] =
+    useState<Record<string, string>>({})
+
   const [currentIndex, setCurrentIndex] = useState(0)
 
   const flatListRef = useRef<FlatList<Step>>(null)
-
-  // 🔑 controlla lo scroll SOLO all’ingresso pagina
-  const hasAutoScrolled = useRef(false)
+  const initialized = useRef(false)
 
   /* ---------------- LOAD ---------------- */
 
@@ -108,11 +119,19 @@ export default function CourseScreen() {
       .eq('course_id', courseId)
       .order('order_index')
 
-    if (data) setPhases(data)
+    if (!data) return
+
+    setPhases(data)
+
+    const map: Record<string, string> = {}
+    data.forEach((p) => {
+      map[p.id] = p.title
+    })
+    setPhasesMap(map)
   }
 
   async function loadSteps() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('steps')
       .select(`
         id,
@@ -121,186 +140,196 @@ export default function CourseScreen() {
         completed,
         order_index,
         phase_id,
-        resources
+        course_id,
+        resources (
+          id,
+          title,
+          url,
+          type
+        )
       `)
       .eq('course_id', courseId)
 
-    if (!data) return
+    if (error || !data) {
+      console.error('loadSteps error', error)
+      return
+    }
 
-    const sorted = data.sort((a, b) => {
-      const pa = phases.find(
-        (p) => p.id === a.phase_id
-      )
-      const pb = phases.find(
-        (p) => p.id === b.phase_id
-      )
-      if (!pa || !pb) return 0
-      if (pa.order_index !== pb.order_index) {
-        return pa.order_index - pb.order_index
+    // 🔥 NORMALIZZA: resources[] → resource
+    const normalized: Step[] = data.map((step: any) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      completed: step.completed,
+      order_index: step.order_index,
+      phase_id: step.phase_id,
+      course_id: step.course_id,
+      resource: step.resources?.[0] || null,
+    }))
+
+    const sorted = normalized.sort((a, b) => {
+      const phaseA = phases.find(p => p.id === a.phase_id)
+      const phaseB = phases.find(p => p.id === b.phase_id)
+
+      if (!phaseA || !phaseB) return 0
+
+      if (phaseA.order_index !== phaseB.order_index) {
+        return phaseA.order_index - phaseB.order_index
       }
+
       return a.order_index - b.order_index
     })
 
     setSteps(sorted)
+    recomputeVisibleSteps(sorted)
   }
 
-  /* ---------------- LOGIC ---------------- */
+  /* ---------------- CORE LOGIC ---------------- */
 
-  const visibleSteps = useMemo(() => {
-    const activePhase = getActivePhase(phases, steps)
+  function recomputeVisibleSteps(allSteps: Step[]) {
+    const activePhase = getActivePhase(phases, allSteps)
 
-    const allowedPhaseIds = activePhase
-      ? phases
-          .filter(
-            (p) =>
-              p.order_index <= activePhase.order_index
-          )
-          .map((p) => p.id)
-      : phases.map((p) => p.id)
+    let visiblePhaseIds: string[] = []
 
-    return steps.filter((s) =>
-      allowedPhaseIds.includes(s.phase_id)
+    if (activePhase) {
+      visiblePhaseIds = phases
+        .filter(
+          (p) =>
+            p.order_index <= activePhase.order_index
+        )
+        .map((p) => p.id)
+    } else {
+      visiblePhaseIds = phases.map((p) => p.id)
+    }
+
+    const visible = allSteps.filter((s) =>
+      visiblePhaseIds.includes(s.phase_id)
     )
-  }, [steps, phases])
 
-  /**
-   * ✅ SCROLL AUTOMATICO
-   * SOLO al primo ingresso nella pagina
-   */
-  useEffect(() => {
-    if (
-      hasAutoScrolled.current ||
-      !visibleSteps.length
-    )
-      return
+    setVisibleSteps(visible)
+
+    if (initialized.current) return
 
     const firstIncompleteIndex =
-      visibleSteps.findIndex(
-        (s) => !s.completed
-      )
+      visible.findIndex((s) => !s.completed)
 
-    const targetIndex =
-      firstIncompleteIndex >= 0
-        ? firstIncompleteIndex
-        : 0
-
-    hasAutoScrolled.current = true
-    setCurrentIndex(targetIndex)
-
-    requestAnimationFrame(() => {
-      flatListRef.current?.scrollToIndex({
-        index: targetIndex,
-        animated: false,
+    if (firstIncompleteIndex >= 0) {
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToIndex({
+          index: firstIncompleteIndex,
+          animated: false,
+        })
       })
-    })
-  }, [visibleSteps])
+    }
+
+    initialized.current = true
+  }
 
   async function toggleCompleted(
     stepId: string,
     value: boolean
   ) {
-    const updated = steps.map((s) =>
-      s.id === stepId
-        ? { ...s, completed: value }
-        : s
-    )
-
-    const step = updated.find(
-      (s) => s.id === stepId
-    )
-
-    if (step && value) {
-      if (
-        isPhaseCompleted(
-          step.phase_id,
-          updated
-        )
-      ) {
-        router.push(
-          `/course/phase-completed?phaseId=${step.phase_id}&courseId=${courseId}`
-        )
-      }
-    }
-
-    setSteps(updated)
-
-    supabase
+    await supabase
       .from('steps')
       .update({ completed: value })
       .eq('id', stepId)
-      .then()
+
+    setSteps((prev) => {
+      const updated = prev.map((s) =>
+        s.id === stepId
+          ? { ...s, completed: value }
+          : s
+      )
+
+      recomputeVisibleSteps(updated)
+      setCurrentIndex(0)
+
+      const updatedStep = updated.find(
+        (s) => s.id === stepId
+      )
+
+      if (updatedStep && value) {
+        const completed = isPhaseCompleted(
+          updatedStep.phase_id,
+          updated
+        )
+
+        if (completed) {
+          router.push({
+            pathname: '/course/phase-completed',
+            params: {
+              phaseId: updatedStep.phase_id,
+              courseId,
+            },
+          })
+        }
+      }
+
+      return updated
+    })
   }
 
   /* ---------------- HEADER INFO ---------------- */
 
   const currentStep = visibleSteps[currentIndex]
-
-  const currentPhase = currentStep
-    ? phases.find(
-        (p) => p.id === currentStep.phase_id
-      )
-    : null
-
-  const currentPhaseNumber = currentPhase
-    ? currentPhase.order_index + 1
+  const currentPhaseTitle = currentStep
+    ? phasesMap[currentStep.phase_id]
     : null
 
   /* ---------------- UI ---------------- */
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* HEADER */}
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.background,
+      }}
+    >
+      {/* HEADER CON BACK BUTTON */}
       <View
         style={{
-          paddingTop: 28,
-          paddingBottom: 6,
+          paddingTop: 56,
           paddingHorizontal: spacing.lg,
-          alignItems: 'center',
+          paddingBottom: spacing.sm,
         }}
       >
+        {/* Back Button */}
         <Pressable
-          onPress={() => router.push('/')}
-          style={{
-            position: 'absolute',
-            left: spacing.lg,
-            top: 28,
-          }}
+          onPress={() => router.back()}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            marginBottom: spacing.sm,
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
           <Text style={typography.backButton}>←</Text>
         </Pressable>
 
-        <Text
-          style={{
-            ...typography.courseTitle,
-            textAlign: 'center',
-          }}
-        >
+        <Text style={typography.courseTitle}>
           {courseTitle}
         </Text>
 
-        {currentPhase && (
+        {currentPhaseTitle && (
           <Text
             style={{
-              fontSize: 13,
+              marginTop: 4,
+              fontSize: 16,
               fontWeight: '600',
               color: colors.mutedText,
-              marginTop: 2,
-              textAlign: 'center',
             }}
           >
-            Fase {currentPhaseNumber} · {currentPhase.title}
+            {currentPhaseTitle}
           </Text>
         )}
       </View>
 
-      {/* STEPS */}
       <FlatList
         ref={flatListRef}
         data={visibleSteps}
         horizontal
         pagingEnabled
-        keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
         onMomentumScrollEnd={(e) => {
           const index = Math.round(
             e.nativeEvent.contentOffset.x / width
@@ -311,8 +340,7 @@ export default function CourseScreen() {
           <View
             style={{
               width,
-              paddingHorizontal: spacing.lg,
-              paddingBottom: spacing.lg,
+              padding: spacing.lg,
             }}
           >
             <StepItem

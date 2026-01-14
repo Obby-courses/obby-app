@@ -7,13 +7,12 @@ export const colors = {
   textSecondary: '#555555',
   mutedText: '#999999',
   accent: '#6D5DF6',
-
   primaryButton: '#000000',
-
   successBg: '#E6F7EC',
   successText: '#1E7F43',
+  // ✅ AGGIUNTO: Colore per i bordi di input e card
+  border: '#e1e1e1', 
 }
-
 
 export const spacing = {
   xs: 4,
@@ -54,7 +53,6 @@ export const typography = {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  // ✅ AGGIUNGI QUESTO
   backButton: {
     fontSize: 28,
     color: colors.textPrimary,
