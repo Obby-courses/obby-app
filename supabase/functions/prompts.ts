@@ -14,32 +14,65 @@ You MUST output valid JSON that matches EXACTLY this schema:
 {
   "phases": [
     {
-      "order_index": number, 
-      "title": string, 
-      "description": string
+      "order_index": number,
+      "title": string,
+      "description": string,
+      "keywords": string[],
+      "intent": string
     }
   ]
 }
 
 STRICT CONTRACT & RULES:
-1. QUANTITY: You MUST generate EXACTLY 4 items in the 'phases' array. Not 3, not 5.
-2. FORMAT: You must NEVER wrap the output in markdown code blocks (like \`\`\`json). Return ONLY the raw JSON string.
-3. CONTENT: You must NEVER return null fields. If a description is abstract, you MUST invent a plausible educational description.
-4. PURITY: You must NEVER add explanations, apologies, or conversational text before or after the JSON.
-5. CONSEQUENCE: Your output is parsed by a strict software pipeline. Any markdown, extra text, or invalid JSON will cause a critical system failure.
-
-If you violate any rule, your response is invalid and will be rejected.
+1. QUANTITY: You MUST generate EXACTLY 4 items in the "phases" array.
+2. FORMAT: NEVER wrap the output in markdown or code blocks.
+3. CONTENT: You MUST NEVER return null or missing fields.
+4. PURITY: Return ONLY raw JSON. No explanations, no text.
+5. KEYWORDS (CRITICAL):
+   - Each phase MUST include a "keywords" array.
+   - The array MUST contain between 3 and 6 strings.
+   - Keywords MUST be concrete, operational, and derived from macro-phase keywords.
+6. INTENT:
+   - Each phase MUST define exactly ONE intent.
+   - Allowed values ONLY:
+     "explore", "understand", "practice", "apply", "reflect"
+7. ORDER:
+   - order_index MUST be progressive from 1 to 4.
+8. PROGRESSION:
+   - Phases MUST form a logical learning progression.
+9. FAILURE POLICY:
+   - Any missing field, extra text, or invalid JSON causes total failure.
 `;
 
-// Helper per generare il messaggio utente per le Fasi
-export const USER_PHASE_PROMPT = (macroTitle: string, macroDesc: string) => `
-CONTEXT DATA:
-Macro-Phase Title: "${macroTitle}"
-Macro-Phase Description: "${macroDesc}"
+// Helper per generare il messaggio utente per le Fasi (CON KEYWORDS)
+export const USER_PHASE_PROMPT = (
+  macroTitle: string,
+  macroDesc: string,
+  keywords: string[],
+  orderIndex: number
+) => `
+CONTEXT (JSON):
+{
+  "macro_phase": {
+    "title": "${macroTitle}",
+    "description": "${macroDesc}",
+    "keywords": ${JSON.stringify(keywords)},
+    "difficulty_order_index": ${orderIndex}
+  }
+}
 
 TASK:
-Generate the 4 conceptual phases for this specific macro-phase.
+Generate exactly 4 phases for this macro-phase.
+
+CONSTRAINTS:
+- Stay strictly within the macro-phase scope
+- Expand and specialize the macro keywords
+- Respect difficulty level (1 = beginner, 6 = expert)
+- Produce phases usable for step generation
+
+Return ONLY valid JSON matching the system schema.
 `;
+
 
 // -------------------------------------------------------
 // STEP 3: STEPS OPERATIVI - System Prompt
@@ -47,17 +80,17 @@ Generate the 4 conceptual phases for this specific macro-phase.
 export const STEP_GENERATOR = `
 You are a deterministic JSON API.
 
-You generate ONLY structured operational steps for a learning app.
+You generate ONLY structured operational steps for a learning application.
 
 RULES:
-- You MUST output valid JSON.
-- You MUST NOT include explanations, markdown, or text.
-- You MUST NOT change language: always use the language of the input.
-- You MUST generate steps only for the given phase.
-- You MUST NOT invent topics that are not related to the phase.
-- Each step MUST contain: title, description, theme, subtheme, level.
+- Output MUST be valid JSON.
+- NO explanations, NO markdown, NO extra text.
+- Language MUST match the input language.
+- Generate steps ONLY for the given phase.
+- Do NOT invent unrelated topics.
+- order_index MUST be progressive starting from 1.
 
-The JSON format MUST be exactly:
+JSON FORMAT (EXACT):
 
 {
   "operational_steps": [
@@ -71,39 +104,45 @@ The JSON format MUST be exactly:
     }
   ]
 }
-`
+`;
 
-// Helper per generare il messaggio utente per gli Step
+
+// Helper per generare il messaggio utente per gli Step (CON CONTESTO DI PHASE)
 export const USER_STEP_PROMPT = ({
   courseTitle,
   courseDescription,
-  phaseTitle
+  phaseTitle,
+  phaseDescription,
+  phaseKeywords,
+  phaseIntent
 }: {
   courseTitle?: string
   courseDescription?: string
   phaseTitle: string
+  phaseDescription?: string
+  phaseKeywords: string[]
+  phaseIntent: string
 }) => `
 COURSE:
 ${courseTitle || ''}
 
-DESCRIPTION:
+COURSE DESCRIPTION:
 ${courseDescription || ''}
 
-CURRENT PHASE:
-${phaseTitle}
+PHASE CONTEXT:
+Title: ${phaseTitle}
+Description: ${phaseDescription || ''}
+Keywords: ${phaseKeywords.join(', ')}
+Intent: ${phaseIntent}
 
 TASK:
-Generate 4–6 concrete operational steps that a learner must complete in this phase.
+Generate between 4 and 6 operational steps that concretely execute the phase intent.
 
-Each step must:
-- Be actionable
-- Be specific
-- Be directly related to the CURRENT PHASE
-- Be written in the same language as this input
+RULES:
+- Steps must be actionable
+- Steps must derive directly from the phase keywords
+- Do NOT repeat phase or course descriptions
 
-Do not describe the course.  
-Do not repeat the phase.  
-Only generate the steps.
+Return ONLY valid JSON in the required format.
+`;
 
-Return ONLY JSON in the exact format required by the system.
-`
