@@ -1,18 +1,20 @@
-import React from 'react'
-import {
-  View,
-  Text,
-  Pressable,
-  Linking,
-  ScrollView,
-} from 'react-native'
 import {
   colors,
-  spacing,
-  radius,
   layout,
+  radius,
+  spacing,
   typography,
 } from '@/lib/theme'
+import React from 'react'
+import {
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 
 /* ================================
    TIPI
@@ -22,7 +24,8 @@ type Resource = {
   id: string
   title: string
   url: string
-  type: string   // ⬅️ NON più union type
+  type: string
+  thumbnail_url?: string | null
 }
 
 type StepItemProps = {
@@ -47,19 +50,9 @@ export default function StepItem({
 
   const hasResource = !!step.resource
 
-  const getResourceIcon = (type?: string) => {
-    switch (type) {
-      case 'video': return '📺'
-      case 'article': return '📄'
-      case 'tool': return '🛠️'
-      case 'course': return '🎓'
-      default: return '🔗'
-    }
-  }
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      
+
       {/* HEADER */}
       <View
         style={{
@@ -88,11 +81,89 @@ export default function StepItem({
         </Text>
       </View>
 
+      {/* THUMBNAIL INTERATTIVA (RESOURCE BUTTON) */}
+      <View style={{ paddingHorizontal: layout.cardPadding, marginTop: spacing.md }}>
+        <Pressable
+          disabled={!hasResource}
+          onPress={() => step.resource?.url && Linking.openURL(step.resource.url)}
+          style={({ pressed }) => ({
+            width: '100%',
+            height: 200,
+            backgroundColor: '#1a1a1a',
+            borderRadius: radius.md,
+            overflow: 'hidden',
+            position: 'relative',
+            opacity: pressed ? 0.9 : 1,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.1)',
+          })}
+        >
+          {step.resource?.thumbnail_url ? (
+            <Image
+              source={{ uri: step.resource.thumbnail_url }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, { justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={{ fontSize: 40 }}>📺</Text>
+            </View>
+          )}
+
+          {/* OVERLAY PLAY BUTTON */}
+          {hasResource && (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }]}>
+              <View style={{
+                backgroundColor: colors.accent,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                borderRadius: 30,
+                flexDirection: 'row',
+                alignItems: 'center',
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 5,
+                elevation: 5
+              }}>
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                  GUARDA IL VIDEO
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {!hasResource && (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+              <Text style={{ color: '#888', textAlign: 'center', fontSize: 13, fontWeight: '600' }}>
+                Risorsa in fase di generazione...
+              </Text>
+            </View>
+          )}
+        </Pressable>
+
+        {hasResource && (
+          <Text
+            numberOfLines={1}
+            style={{
+              marginTop: spacing.xs,
+              ...typography.small,
+              color: colors.mutedText,
+              fontSize: 12,
+              fontStyle: 'italic'
+            }}
+          >
+            {step.resource?.title}
+          </Text>
+        )}
+      </View>
+
       {/* CONTENUTO */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: layout.cardPadding,
+          paddingTop: spacing.md,
           paddingBottom: 120,
         }}
       >
@@ -101,91 +172,27 @@ export default function StepItem({
             style={{
               ...typography.body,
               color: colors.textSecondary,
-              marginBottom: spacing.lg,
               lineHeight: 22,
             }}
           >
             {step.description}
           </Text>
         )}
-
-        {/* BOX RISORSA */}
-        <View style={{ marginTop: spacing.sm }}>
-          <Text
-            style={{
-              ...typography.small,
-              color: colors.textSecondary,
-              marginBottom: spacing.sm
-            }}
-          >
-            MATERIALE DI STUDIO
-          </Text>
-          
-          <Pressable
-            disabled={!hasResource}
-            onPress={() =>
-              step.resource?.url && Linking.openURL(step.resource.url)
-            }
-            style={({ pressed }) => ({
-              backgroundColor: hasResource ? colors.card : '#222',
-              borderRadius: radius.md,
-              padding: spacing.md,
-              borderWidth: 1,
-              borderColor: hasResource ? 'rgba(255,255,255,0.1)' : 'transparent',
-              opacity: !hasResource ? 0.5 : (pressed ? 0.8 : 1),
-            })}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 24, marginRight: spacing.sm }}>
-                {getResourceIcon(step.resource?.type)}
-              </Text>
-              
-              <View style={{ flex: 1 }}>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    ...typography.body,
-                    fontWeight: '700',
-                    color: hasResource
-                      ? colors.accent
-                      : colors.textSecondary,
-                  }}
-                >
-                  {hasResource
-                    ? 'Apri Risorsa Esterna'
-                    : 'Nessuna risorsa'}
-                </Text>
-
-                {hasResource && (
-                  <Text
-                    numberOfLines={2}
-                    style={{
-                      marginTop: 2,
-                      fontSize: 13,
-                      color: colors.textSecondary,
-                    }}
-                  >
-                    {step.resource?.title}
-                  </Text>
-                )}
-              </View>
-            </View>
-          </Pressable>
-          
-          {!hasResource && (
-            <Text
-              style={{
-                fontSize: 12,
-                color: '#666',
-                marginTop: spacing.xs,
-                textAlign: 'center'
-              }}
-            >
-              Stiamo preparando il materiale per questo step...
-            </Text>
-          )}
-        </View>
       </ScrollView>
+
+      {/* OVERLAY DI COMPLETAMENTO (VELO OPACO) */}
+      {step.completed && (
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              zIndex: 10,
+              pointerEvents: 'none'
+            }
+          ]}
+        />
+      )}
 
       {/* FOOTER */}
       <View
@@ -199,6 +206,7 @@ export default function StepItem({
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: 'rgba(255,255,255,0.1)',
+          zIndex: 20, // Sopra il velo opaco
         }}
       >
         <Pressable

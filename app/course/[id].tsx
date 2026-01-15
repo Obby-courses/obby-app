@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  View,
-  FlatList,
-  Dimensions,
-  Text,
-  Pressable,
-} from 'react-native'
+import { supabase } from '@/lib/supabase'
+import { colors, spacing, typography } from '@/lib/theme'
 import {
   useLocalSearchParams,
   useRouter,
 } from 'expo-router'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Dimensions,
+  FlatList,
+  Pressable,
+  Text,
+  View,
+} from 'react-native'
 import StepItem from './StepItem'
-import { colors, spacing, typography } from '@/lib/theme'
 
 const { width } = Dimensions.get('window')
 
@@ -23,6 +23,7 @@ type Resource = {
   title: string
   url: string
   type: string
+  thumbnail_url?: string | null
 }
 
 type Step = {
@@ -145,7 +146,8 @@ export default function CourseScreen() {
           id,
           title,
           url,
-          type
+          type,
+          thumbnail_url
         )
       `)
       .eq('course_id', courseId)
@@ -288,39 +290,42 @@ export default function CourseScreen() {
       {/* HEADER CON BACK BUTTON */}
       <View
         style={{
-          paddingTop: 56,
+          paddingTop: 48,
           paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.sm,
+          paddingBottom: spacing.xs,
         }}
       >
-        {/* Back Button */}
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start',
-            marginBottom: spacing.sm,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Text style={typography.backButton}>←</Text>
-        </Pressable>
-
-        <Text style={typography.courseTitle}>
-          {courseTitle}
-        </Text>
-
-        {currentPhaseTitle && (
-          <Text
-            style={{
-              marginTop: 4,
-              fontSize: 16,
-              fontWeight: '600',
-              color: colors.mutedText,
-            }}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Back Button */}
+          <Pressable
+            onPress={() => router.replace('/')}
+            style={({ pressed }) => ({
+              opacity: pressed ? 0.6 : 1,
+              zIndex: 10,
+            })}
           >
-            {currentPhaseTitle}
-          </Text>
-        )}
+            <Text style={typography.backButton}>←</Text>
+          </Pressable>
+
+          {/* Titles Container (Centered relative to the row) */}
+          <View style={{ flex: 1, marginLeft: -30 }}>
+            <Text style={[typography.courseTitle, { textAlign: 'center' }]}>
+              {courseTitle}
+            </Text>
+            {currentPhaseTitle && (
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '600',
+                  color: colors.mutedText,
+                  textAlign: 'center',
+                }}
+              >
+                {currentPhaseTitle}
+              </Text>
+            )}
+          </View>
+        </View>
       </View>
 
       <FlatList
@@ -335,6 +340,20 @@ export default function CourseScreen() {
             e.nativeEvent.contentOffset.x / width
           )
           setCurrentIndex(index)
+        }}
+        getItemLayout={(data, index) => ({
+          length: width,
+          offset: width * index,
+          index,
+        })}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise((resolve) => setTimeout(resolve, 500))
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({
+              index: info.index,
+              animated: false,
+            })
+          })
         }}
         renderItem={({ item }) => (
           <View

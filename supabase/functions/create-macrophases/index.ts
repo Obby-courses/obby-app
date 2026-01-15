@@ -40,7 +40,6 @@ serve(async (req: Request) => {
     {
       "title": "SCOPERTA|COMPRENSIONE|PRATICA|AUTONOMIA|OTTIMIZZAZIONE|MASTERY",
       "description": "Descrizione fase (1-2 frasi)",
-      "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
       "order_index": 1,
       "estimated_months": 2
     }
@@ -51,7 +50,6 @@ REGOLE OBBLIGATORIE:
 - ESATTAMENTE 6 macrofasi (order_index da 1 a 6)
 - order_index rappresenta il livello: 1=principiante assoluto, 6=mastery
 - Progressione da ZERO ASSOLUTO (order_index 1) a MASTERY (order_index 6)
-- keywords: 5 termini TECNICI specifici del dominio, ordinati per difficoltà crescente
 - estimated_months: stima realistica mesi per completare la fase con pratica costante
 - Titoli FISSI: SCOPERTA, COMPRENSIONE, PRATICA, AUTONOMIA, OTTIMIZZAZIONE, MASTERY` 
           },
@@ -90,7 +88,6 @@ REGOLE OBBLIGATORIE:
         course_id: course.id,
         title: m.title,
         description: m.description,
-        keywords: m.keywords,  // ✅ Array JSON salvato direttamente
         estimated_months: m.estimated_months,
         order_index: m.order_index
       }))
@@ -110,7 +107,6 @@ REGOLE OBBLIGATORIE:
         id: m.id,
         title: m.title,
         description: m.description,
-        keywords: m.keywords,  // ✅ Keywords tornano al frontend
         estimated_months: m.estimated_months,
         order_index: m.order_index
       }))

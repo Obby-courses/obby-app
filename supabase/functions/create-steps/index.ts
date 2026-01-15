@@ -18,10 +18,14 @@ serve(async (req: Request) => {
     const { 
       courseId, 
       phaseId, 
-      phaseTitle, 
+      phaseTitle,
+      phaseDescription,
       courseTitle, 
       courseDescription 
     } = body
+
+    console.log(`🚀 STEP 3: Generazione step per "${phaseTitle}" (Corso: ${courseTitle})`);
+    console.log(`📝 Descrizione Fase: ${phaseDescription?.substring(0, 50)}...`);
 
     if (!courseId || !phaseId || !phaseTitle) {
       return new Response(
@@ -49,8 +53,12 @@ serve(async (req: Request) => {
           { role: 'system', content: STEP_GENERATOR },
           { 
             role: 'user', 
-            content: USER_STEP_PROMPT({ courseTitle, courseDescription, phaseTitle }) 
-          },
+            content: USER_STEP_PROMPT({ 
+              courseTitle, 
+              courseDescription, 
+              phaseTitle,
+              phaseDescription 
+            })          },
         ],
         response_format: { type: 'json_object' },
         temperature: 0.2,

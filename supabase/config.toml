@@ -138,3 +138,19 @@ s3_host = "env(S3_HOST)"
 s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# Functions configuration
+[functions.search-resources]
+verify_jwt = false
+
+[functions.create-macrophases]
+verify_jwt = false
+
+[functions.create-phases]
+verify_jwt = false
+
+[functions.create-steps]
+verify_jwt = false
+
+[functions.generate-resources-for-steps]
+verify_jwt = false

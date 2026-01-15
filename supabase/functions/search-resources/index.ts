@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { RESOURCE_QUERY_EXTRACTOR, USER_RESOURCE_QUERY_PROMPT } from "../prompts.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,7 +13,14 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    const { step_id, step_title, step_description } = await req.json()
+    const { 
+      step_id, 
+      step_title, 
+      step_description,
+      course_title,
+      course_description,
+      phase_title
+    } = await req.json()
     
     console.log(`[TARGET] Elaborazione risorsa per: ${step_title}`)
 
@@ -20,15 +28,60 @@ serve(async (req) => {
       throw new Error("Missing step_id or step_title")
     }
 
+    const GROQ_KEY = Deno.env.get("GROQ_API_KEY")
+    const YT_KEY = Deno.env.get("YOUTUBE_API_KEY")
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    // 1. Ricerca su YouTube
-    const YT_KEY = Deno.env.get("YOUTUBE_API_KEY")
-    const query = `${step_title} tutorial`
-    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(query)}&key=${YT_KEY}`
+    /* ========== 1) LLM: Refine Search Query ========== */
+    let refinedQuery = `${step_title} tutorial lezione basi`
+
+    try {
+      if (GROQ_KEY) {
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GROQ_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: RESOURCE_QUERY_EXTRACTOR },
+              { 
+                role: "user", 
+                content: USER_RESOURCE_QUERY_PROMPT({
+                  courseTitle: course_title || "Generale",
+                  courseDescription: course_description || "",
+                  phaseTitle: phase_title || "Basi",
+                  stepTitle: step_title,
+                  stepDescription: step_description || ""
+                }) 
+              },
+            ],
+            temperature: 0.1,
+            max_tokens: 50
+          }),
+        })
+
+        const groqData = await groqRes.json()
+        const aiQuery = groqData.choices?.[0]?.message?.content?.trim()
+        
+        if (aiQuery) {
+          refinedQuery = aiQuery.replace(/[".]/g, "")
+          console.log(`[AI QUERY] Generated: "${refinedQuery}"`)
+        }
+      }
+    } catch (llmErr) {
+      console.error("[LLM ERROR] Query refinement failed, using fallback:", llmErr.message)
+    }
+
+    /* ========== 2) YouTube Search ========== */
+    // videoDuration=medium (4-20m) + relevanceLanguage=it
+    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=medium&relevanceLanguage=it&maxResults=1&q=${encodeURIComponent(refinedQuery)}&key=${YT_KEY}`
 
     const ytRes = await fetch(ytUrl)
     const ytData = await ytRes.json()
@@ -50,6 +103,7 @@ serve(async (req) => {
         step_id: step_id,
         title: video.snippet.title,
         url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
+        thumbnail_url: video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.default?.url,
         type: "video",
         // Aggiungiamo metadati se vuoi popolare tags o livelli
         tags: ["auto-generated"],

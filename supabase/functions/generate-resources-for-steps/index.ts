@@ -32,7 +32,7 @@ const corsHeaders = {
 /* ======================================================
    🔁 CALL CHILD FUNCTION: search-resources
    ====================================================== */
-async function callSearchResources(step: any) {
+async function callSearchResources(step: any, courseTitle: string, courseDescription: string, phaseTitle: string) {
   console.log(`[PIPELINE] Calling search-resources for: ${step.title}`)
 
   try {
@@ -42,14 +42,17 @@ async function callSearchResources(step: any) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // ⚠️ funziona SOLO se search-resources è deployata con --no-verify-jwt
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          // ⚠️ Usiamo solo apikey. Se la funzione ha verify_jwt = false, non serve Bearer.
+          // Se la funzione ha verify_jwt = true e riceve Bearer SERVICE_ROLE, dà 401 se non è un user token.
           apikey: SUPABASE_SERVICE_ROLE_KEY,
         },
         body: JSON.stringify({
           step_id: step.id,
           step_title: step.title,
           step_description: step.description || "",
+          course_title: courseTitle,
+          course_description: courseDescription,
+          phase_title: phaseTitle,
         }),
       }
     )
@@ -96,6 +99,29 @@ serve(async (req: Request) => {
     }
 
     /* ======================================================
+       📥 LOAD PHASE & COURSE CONTEXT
+       ====================================================== */
+    const { data: phase, error: phaseError } = await supabase
+      .from("phases")
+      .select("title, course_id")
+      .eq("id", phaseId)
+      .single()
+
+    if (phaseError || !phase) {
+      throw phaseError || new Error("Phase not found")
+    }
+
+    const { data: course, error: courseError } = await supabase
+      .from("courses")
+      .select("title, description")
+      .eq("id", phase.course_id)
+      .single()
+
+    if (courseError || !course) {
+      throw courseError || new Error("Course not found")
+    }
+
+    /* ======================================================
        📥 LOAD STEPS
        ====================================================== */
     const { data: steps, error: stepsError } = await supabase
@@ -109,7 +135,7 @@ serve(async (req: Request) => {
     }
 
     console.log(
-      `[PIPELINE] Found ${steps.length} steps. Starting loop...`
+      `[PIPELINE] Found ${steps.length} steps. Context: ${course.title} > ${phase.title}. Starting loop...`
     )
 
     let totalCreated = 0
@@ -118,7 +144,7 @@ serve(async (req: Request) => {
        🔁 LOOP STEPS → RESOURCES
        ====================================================== */
     for (const step of steps) {
-      const success = await callSearchResources(step)
+      const success = await callSearchResources(step, course.title, course.description, phase.title)
 
       if (success) {
         totalCreated++

@@ -14,15 +14,15 @@ serve(async (req: Request) => {
   try {
     const { 
       courseId, 
+      courseTitle,
       macroPhaseId, 
       macroPhaseTitle, 
       macroPhaseDescription,
-      keywords,      // ✅ NUOVO: Array di keywords
-      orderIndex     // ✅ NUOVO: Livello difficoltà (1-6)
+      orderIndex
     } = await req.json();
 
-    console.log(`🚀 STEP 2: Generazione fasi per "${macroPhaseTitle}"`);
-    console.log(`📊 Keywords ricevute:`, keywords);
+    console.log(`🚀 STEP 2: Generazione fasi per "${macroPhaseTitle}" (Corso: ${courseTitle})`);
+    console.log(`📝 Descrizione Macro: ${macroPhaseDescription?.substring(0, 50)}...`);
     console.log(`📈 Livello difficoltà:`, orderIndex);
 
     const supabase = createClient(
@@ -46,10 +46,10 @@ serve(async (req: Request) => {
           { 
             role: "user", 
             content: USER_PHASE_PROMPT(
+              courseTitle || "Corso senza titolo",
               macroPhaseTitle, 
               macroPhaseDescription || "",
-              keywords || [],           // ✅ Passa keywords
-              orderIndex || 1           // ✅ Passa livello
+              orderIndex || 1 
             )
           }
         ]
@@ -105,7 +105,6 @@ serve(async (req: Request) => {
       JSON.stringify({ 
         success: true, 
         phases: insertedPhases,
-        keywords_used: keywords,
         difficulty_level: orderIndex
       }), 
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

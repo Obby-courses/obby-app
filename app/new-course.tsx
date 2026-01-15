@@ -1,10 +1,10 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
-import { colors, radius, spacing, typography, layout } from '@/lib/theme'
+import { LoadingStatus } from '@/lib/loadingMessages'
+import { supabase } from '@/lib/supabase'
+import { colors, layout, radius, spacing, typography } from '@/lib/theme'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
-import { LoadingStatus } from '@/lib/loadingMessages'
-import { supabase } from '@/lib/supabase'
 
 /* =======================================================
     TIPI SINCRONIZZATI
@@ -40,9 +40,9 @@ export default function NewCourseAIScreen() {
 
       const macroRes = await fetch(`${SUPABASE_URL}/functions/v1/create-macrophases`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({ topic: courseInput.trim(), userId: TEST_USER_ID }),
       })
@@ -65,7 +65,7 @@ export default function NewCourseAIScreen() {
       // Recupero le macro-fasi per trovare la prima
       const { data: mPhases } = await supabase
         .from('macro_phases')
-        .select('id, title')
+        .select('id, title, description, order_index')
         .eq('course_id', courseId)
         .order('order_index')
 
@@ -79,14 +79,17 @@ export default function NewCourseAIScreen() {
 
       const phaseRes = await fetch(`${SUPABASE_URL}/functions/v1/create-phases`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
           courseId,
+          courseTitle: courseData.title,
           macroPhaseId: targetMacro.id,
           macroPhaseTitle: targetMacro.title,
+          macroPhaseDescription: targetMacro.description,
+          orderIndex: targetMacro.order_index,
         }),
       })
 
@@ -99,7 +102,7 @@ export default function NewCourseAIScreen() {
       // Recupero la prima fase effettiva per generare gli step
       const { data: phases } = await supabase
         .from('phases')
-        .select('id, title')
+        .select('id, title, description')
         .eq('macro_phase_id', targetMacro.id)
         .order('order_index')
 
@@ -113,14 +116,15 @@ export default function NewCourseAIScreen() {
 
       const stepsRes = await fetch(`${SUPABASE_URL}/functions/v1/create-steps`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
           courseId,
           phaseId: targetPhase.id,
           phaseTitle: targetPhase.title,
+          phaseDescription: targetPhase.description,
           courseTitle: courseData.title,
           courseDescription: courseData.description,
         }),
@@ -135,7 +139,7 @@ export default function NewCourseAIScreen() {
          ======================================================= */
       console.log('🔍 Generazione risorse in corso...')
       // Nota: qui potresti voler aggiungere uno stato di loading specifico se lo desideri
-      
+
       const resourceRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
         method: 'POST',
         headers: {
@@ -167,7 +171,7 @@ export default function NewCourseAIScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView contentContainerStyle={{ padding: layout.screenPadding, paddingTop: 60 }}>
-        
+
         {/* Pulsante Indietro */}
         <Pressable onPress={() => router.back()} style={{ marginBottom: spacing.md }}>
           <Text style={{ fontSize: 32, color: colors.primaryButton }}>←</Text>
@@ -219,10 +223,10 @@ export default function NewCourseAIScreen() {
 
         {/* Box Errore */}
         {error && (
-          <View style={{ 
-            marginTop: spacing.xl, 
-            padding: spacing.md, 
-            backgroundColor: '#331111', 
+          <View style={{
+            marginTop: spacing.xl,
+            padding: spacing.md,
+            backgroundColor: '#331111',
             borderRadius: radius.md,
             borderWidth: 1,
             borderColor: '#FF4444'
