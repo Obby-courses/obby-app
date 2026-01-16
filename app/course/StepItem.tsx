@@ -1,3 +1,4 @@
+import ResourcePreview from '@/components/ResourcePreview'
 import {
   colors,
   layout,
@@ -5,7 +6,7 @@ import {
   spacing,
   typography,
 } from '@/lib/theme'
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Image,
   Linking,
@@ -48,6 +49,8 @@ export default function StepItem({
   onToggleCompleted,
 }: StepItemProps) {
 
+  const [showPreview, setShowPreview] = useState(false)
+
   const hasResource = !!step.resource
 
   return (
@@ -85,7 +88,17 @@ export default function StepItem({
       <View style={{ paddingHorizontal: layout.cardPadding, marginTop: spacing.md }}>
         <Pressable
           disabled={!hasResource}
-          onPress={() => step.resource?.url && Linking.openURL(step.resource.url)}
+          onPress={() => {
+            if (step.resource?.url) {
+              // Simple check for youtube - can be expanded
+              const isYoutube = step.resource.url.includes('youtu');
+              if (isYoutube) {
+                setShowPreview(true);
+              } else {
+                Linking.openURL(step.resource.url);
+              }
+            }
+          }}
           style={({ pressed }) => ({
             width: '100%',
             height: 200,
@@ -239,6 +252,13 @@ export default function StepItem({
           </Text>
         </Pressable>
       </View>
-    </View>
+
+      <ResourcePreview
+        visible={showPreview}
+        onClose={() => setShowPreview(false)}
+        type="youtube"
+        url={step.resource?.url || ''}
+      />
+    </View >
   )
 }

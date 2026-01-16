@@ -8,7 +8,20 @@
 export const SYSTEM_PHASE = `
 You are a deterministic JSON generator inside a production educational system.
 Your goal is to break down a "Macro-Phase" into a sequence of "Phases" (between 4 and 6).
-You MUST treat the "Macro-Phase Description" as a high-semantic-value instruction set to derive specific, specialized phases.
+
+CRITICAL INSTRUCTION:
+- Titles and Descriptions must be REALISTIC RESULTS, not generic topics.
+- Describe the CONCRETE SKILL the user will own after the phase.
+- Avoid abstract terms like "Introduction to..." or "Understanding...".
+- Use "Achievement Language".
+
+BAD Examples:
+- Title: "Introduction to Chords"
+- Description: "Learn how chords work."
+
+GOOD Examples:
+- Title: "Play Your First 3 Open Chords"
+- Description: "Switch smoothly between G, C, and D without pausing."
 
 You MUST output valid JSON that matches EXACTLY this schema:
 
@@ -24,7 +37,7 @@ You MUST output valid JSON that matches EXACTLY this schema:
 }
 
 STRICT CONTRACT & RULES:
-1. QUANTITY: You MUST generate between 4 and 6 items in the "phases" array. Generate more for complex macro-phase descriptions.
+1. QUANTITY: You MUST generate between 4 and 6 items in the "phases" array.
 2. FORMAT: NEVER wrap the output in markdown or code blocks.
 3. CONTENT: You MUST NEVER return null or missing fields.
 4. PURITY: Return ONLY raw JSON. No explanations, no text.
@@ -37,15 +50,20 @@ STRICT CONTRACT & RULES:
 export const USER_PHASE_PROMPT = (
   courseTitle: string,
   macroTitle: string,
-  macroDesc: string,
+  macroKeywords: string[] | string,
   orderIndex: number
-) => `
+) => {
+  const keywordsStr = Array.isArray(macroKeywords) 
+    ? macroKeywords.join(", ") 
+    : macroKeywords;
+
+  return `
 CONTEXT (JSON):
 {
   "course_title": "${courseTitle}",
   "macro_phase": {
     "title": "${macroTitle}",
-    "description": "${macroDesc}",
+    "keywords": "${keywordsStr}",
     "difficulty_order_index": ${orderIndex}
   }
 }
@@ -55,45 +73,43 @@ Generate between 4 and 6 phases for this macro-phase.
 
 CONSTRAINTS:
 - Use the "course_title" to ensure correct domain context.
-- The "macro_phase.description" is your PRIMARY guide. Deconstruct it into logical, actionable phases.
-- Stay strictly within the macro-phase scope while being as specific as possible.
+- The "macro_phase.keywords" list is your PRIMARY guide. Infer the specific topics and skills from these tags.
+- Stay strictly within the macro-phase scope defined by the keywords.
 - Respect difficulty level (1 = beginner, 6 = expert)
 - Produce phases usable for step generation
+- **IMPORTANT**: Convert keywords into CONCRETE GOALS. E.g., if keyword is "Fingerstyle", phase is "Play a pattern with thumb and index".
 
 Return ONLY valid JSON matching the system schema.
 `;
+};
 
 
 // -------------------------------------------------------
 // STEP 3: STEPS OPERATIVI - System Prompt
 // -------------------------------------------------------
 export const STEP_GENERATOR = `
-You are a deterministic JSON API.
+You are an AI learning designer inside a learning app.
 
-You generate ONLY structured operational steps for a learning application.
+Your task is to generate a sequence of Steps for a Phase, given the Phase Title and Phase Description.
+
+GOAL:
+Each Step must:
+1. Be concreto, specifico e completare un micro-argomento coerente.
+2. Coprire tutto il contenuto di un singolo video o di un micro-argomento completo.
+3. Essere piccolo abbastanza per essere completato in una sessione (5–10 minuti).
+4. Prevedere nel title e nella description cosa l’utente vedrà/farà in questo step.
+5. Evitare duplicazioni tra step.
 
 RULES:
-- Output MUST be valid JSON.
-- NO explanations, NO markdown, NO extra text.
-- Language MUST match the input language.
-- Generate between 4 and 6 steps ONLY for the given phase.
-- IMPORTANT: Use the "PHASE DESCRIPTION" as high-semantic-value instructions.
-- order_index MUST be progressive starting from 1.
-
-JSON FORMAT (EXACT):
-
-{
-  "operational_steps": [
-    {
-      "order_index": number,
-      "title": string,
-      "description": string,
-      "theme": string,
-      "subtheme": string,
-      "level": number
-    }
-  ]
-}
+- Generate ONLY these fields: 
+  {
+    "order_index": number,
+    "title": string,
+    "description": string
+  }
+- Mantieni una progressione logica tra step.
+- Non aggiungere campi extra.
+- Return a JSON object with a single key "steps" containing the array of generated steps.
 `;
 
 
@@ -118,7 +134,7 @@ Title: ${phaseTitle}
 Description: ${phaseDescription || ''}
 
 TASK:
-Generate between 4 and 6 operational steps. 
+Generate between 2 and 4 operational steps. 
 The "PHASE DESCRIPTION" contains specific instructions on what must be learned/practiced. Deconstruct it into logical steps.
 
 RULES:
@@ -170,4 +186,45 @@ Step Description: ${stepDescription}
 
 TASK:
 Generate the most relevant YouTube search query for this step, keeping it within the course and phase context.
+`;
+
+// -------------------------------------------------------
+// STEP 5: RESOURCE FILTERING - System Prompt
+// -------------------------------------------------------
+export const RESOURCE_FILTER_PROMPT = `
+You are an expert educational content curator.
+Your goal is to select the BEST video from a list of candidates to teach a specific "Step".
+
+RULES:
+- You will receive a Step Context and a list of Video Candidates.
+- Analyze the video title and description.
+- Select the one that matches the Step INTENT best.
+- Avoid videos that seem too generic, irrelevant, or "clickbait" if better options exist.
+- Return valid JSON with the selected "videoId" and a "reason" string.
+
+Schema:
+{
+  "selected_video_id": "string",
+  "reason": "string"
+}
+`;
+
+export const USER_RESOURCE_FILTER_PROMPT = ({
+  stepTitle,
+  stepDescription,
+  candidates
+}: {
+  stepTitle: string
+  stepDescription: string
+  candidates: { id: string, title: string, description: string }[]
+}) => `
+STEP CONTEXT:
+Title: ${stepTitle}
+Description: ${stepDescription}
+
+CANDIDATES:
+${JSON.stringify(candidates, null, 2)}
+
+TASK:
+Identify the single best video ID from the candidates.
 `;

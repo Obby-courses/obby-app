@@ -1,12 +1,14 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { RESOURCE_QUERY_EXTRACTOR, USER_RESOURCE_QUERY_PROMPT } from "../prompts.ts"
+import { RESOURCE_FILTER_PROMPT, RESOURCE_QUERY_EXTRACTOR, USER_RESOURCE_FILTER_PROMPT, USER_RESOURCE_QUERY_PROMPT } from "../prompts.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
+
+
 
 serve(async (req) => {
   // Gestione CORS
@@ -80,20 +82,74 @@ serve(async (req) => {
     }
 
     /* ========== 2) YouTube Search ========== */
-    // videoDuration=medium (4-20m) + relevanceLanguage=it
-    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=medium&relevanceLanguage=it&maxResults=1&q=${encodeURIComponent(refinedQuery)}&key=${YT_KEY}`
+    /* ========== 2) YouTube Search ========== */
+    // Search for 5 candidates to filter by relevance (Title/Desc)
+    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=medium&relevanceLanguage=it&maxResults=5&q=${encodeURIComponent(refinedQuery)}&key=${YT_KEY}`
 
     const ytRes = await fetch(ytUrl)
     const ytData = await ytRes.json()
 
     if (!ytRes.ok) throw new Error(`YouTube API Error: ${ytRes.status}`)
 
-    const video = ytData.items?.[0]
+    let video = null
+    const candidates = ytData.items || []
+
+    // 3) AI Filtering (if we have multiple candidates)
+    if (candidates.length > 0) {
+      // Default to first
+      video = candidates[0]
+
+      if (candidates.length > 1 && GROQ_KEY) {
+        try {
+          const simplifiedCandidates = candidates.map((c: any) => ({
+             id: c.id.videoId,
+             title: c.snippet.title,
+             description: c.snippet.description
+          }))
+
+          const filterRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${GROQ_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.3-70b-versatile",
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: RESOURCE_FILTER_PROMPT },
+                { 
+                  role: "user", 
+                  content: USER_RESOURCE_FILTER_PROMPT({
+                    stepTitle: step_title,
+                    stepDescription: step_description || "",
+                    candidates: simplifiedCandidates
+                  }) 
+                },
+              ]
+            }),
+          })
+          
+          if (filterRes.ok) {
+             const filterData = await filterRes.json()
+             const choice = JSON.parse(filterData.choices[0].message.content)
+             console.log(`[AI FILTER] Selected: ${choice.selected_video_id} - Reason: ${choice.reason}`)
+             
+             const bestMatch = candidates.find((c: any) => c.id.videoId === choice.selected_video_id)
+             if (bestMatch) video = bestMatch
+          }
+        } catch (filterErr) {
+           console.error("[FILTER ERROR] AI filtering failed, using top result:", filterErr)
+        }
+      }
+    }
+
     if (!video) {
-      console.log(`[SKIP] Nessun video trovato per: ${step_title}`)
-      return new Response(JSON.stringify({ success: false, message: "No video found" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      })
+        console.log(`[SKIP] Nessun video trovato per: ${step_title}`)
+        return new Response(JSON.stringify({ success: false, message: "No video found" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+        })
     }
 
     // 2. Inserimento nella tabella 'resources' (corrispondente alle tue colonne)

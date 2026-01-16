@@ -17,12 +17,12 @@ serve(async (req: Request) => {
       courseTitle,
       macroPhaseId, 
       macroPhaseTitle, 
-      macroPhaseDescription,
+      macroPhaseKeywords, // Extract keywords
       orderIndex
     } = await req.json();
 
     console.log(`🚀 STEP 2: Generazione fasi per "${macroPhaseTitle}" (Corso: ${courseTitle})`);
-    console.log(`📝 Descrizione Macro: ${macroPhaseDescription?.substring(0, 50)}...`);
+    console.log(`📝 Keywords Macro: ${Array.isArray(macroPhaseKeywords) ? macroPhaseKeywords.join(', ') : macroPhaseKeywords}`);
     console.log(`📈 Livello difficoltà:`, orderIndex);
 
     const supabase = createClient(
@@ -48,7 +48,7 @@ serve(async (req: Request) => {
             content: USER_PHASE_PROMPT(
               courseTitle || "Corso senza titolo",
               macroPhaseTitle, 
-              macroPhaseDescription || "",
+              macroPhaseKeywords || [], // Pass keywords
               orderIndex || 1 
             )
           }
