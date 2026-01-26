@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.42.0";
+import { SYSTEM_MACROPHASE } from "../prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,28 +33,7 @@ serve(async (req: Request) => {
         messages: [
           { 
             role: "system", 
-            content: `Sei ARCHITETTO MACROFASE UNIVERSALE. Rispondi SOLO JSON con questa struttura:
-{
-  "course_title": "Titolo del corso (max 100 caratteri)",
-  "course_description": "Descrizione generale (2-3 frasi)",
-  "macro_phases": [
-    {
-      "title": "SCOPERTA|COMPRENSIONE|PRATICA|AUTONOMIA|OTTIMIZZAZIONE|MASTERY",
-      "description": "Breve descrizione (1 frase)",
-      "keywords": ["key1", "key2", "key3", "key4", "key5"],
-      "order_index": 1,
-      "estimated_months": 2
-    }
-  ]
-}
-
-REGOLE OBBLIGATORIE:
-- ESATTAMENTE 6 macrofasi (order_index da 1 a 6)
-- order_index rappresenta il livello: 1=principiante assoluto, 6=mastery
-- Progressione da ZERO ASSOLUTO (order_index 1) a MASTERY (order_index 6)
-- estimated_months: stima realistica mesi per completare la fase con pratica costante
-- keywords: 5-8 parole chiave specifiche e tecniche che definiscono il contenuto didattico
-- Titoli FISSI: SCOPERTA, COMPRENSIONE, PRATICA, AUTONOMIA, OTTIMIZZAZIONE, MASTERY` 
+            content: SYSTEM_MACROPHASE 
           },
           { role: "user", content: `topic = "${topic}"` }
         ]

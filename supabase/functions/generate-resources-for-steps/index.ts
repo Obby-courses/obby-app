@@ -86,7 +86,7 @@ serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders })
   }
 
-  console.log("[VERSION] 7.1 – FIXED AUTH PIPELINE")
+  console.log("[VERSION] 2026-01-25 13:39 - AUTH PIPELINE & LOOP VERIFIED")
 
   try {
     const { phaseId } = await req.json()

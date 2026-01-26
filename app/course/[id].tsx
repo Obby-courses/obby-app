@@ -142,7 +142,8 @@ export default function CourseScreen() {
         order_index,
         phase_id,
         course_id,
-        resources (
+        resource_id,
+        resource:resources!resource_id (
           id,
           title,
           url,
@@ -166,7 +167,7 @@ export default function CourseScreen() {
       order_index: step.order_index,
       phase_id: step.phase_id,
       course_id: step.course_id,
-      resource: step.resources?.[0] || null,
+      resource: step.resource || null,
     }))
 
     const sorted = normalized.sort((a, b) => {

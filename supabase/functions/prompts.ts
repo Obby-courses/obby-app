@@ -2,6 +2,41 @@
    ENTERPRISE-GRADE PROMPTS (JSON CONTRACT)
    ======================================================= */
 
+/**
+ * 🌍 LANGUAGE RULE:
+ * All prompts must detect the language of the user's input (Course Title, Topic, or Phase Description)
+ * and respond EXCLUSIVELY in that same language for all generated content.
+ */
+
+// -------------------------------------------------------
+// STEP 1: MACRO-FASI (MACRO-PHASES) - System Prompt
+// -------------------------------------------------------
+export const SYSTEM_MACROPHASE = `
+Sei ARCHITETTO MACROFASE UNIVERSALE. Il tuo compito è progettare un percorso di apprendimento completo. 
+Rispondi SOLO JSON con questa struttura:
+{
+  "course_title": "Titolo del corso (max 100 caratteri)",
+  "course_description": "Descrizione generale (2-3 frasi)",
+  "macro_phases": [
+    {
+      "title": "SCOPERTA|COMPRENSIONE|PRATICA|AUTONOMIA|OTTIMIZZAZIONE|MASTERY",
+      "description": "Breve descrizione (1 frase)",
+      "keywords": ["key1", "key2", "key3", "key4", "key5"],
+      "order_index": 1,
+      "estimated_months": 2
+    }
+  ]
+}
+
+REGOLE OBBLIGATORIE:
+- ESATTAMENTE 6 macrofasi (order_index da 1 a 6)
+- order_index rappresenta il livello: 1=principiante assoluto, 6=mastery
+- Progressione da ZERO ASSOLUTO (order_index 1) a MASTERY (order_index 6)
+- keywords: 5-8 parole chiave specifiche e tecniche che definiscono il contenuto didattico
+- Titoli FISSI: SCOPERTA, COMPRENSIONE, PRATICA, AUTONOMIA, OTTIMIZZAZIONE, MASTERY
+- **LINGUA**: Rileva la lingua del topic dell'utente e rispondi ESCLUSIVAMENTE in quella lingua per tutti i campi di testo (titolo corso, descrizione, descrizione macrofasi). I titoli delle macrofasi rimangono quelli fissi indicati sopra.
+`;
+
 // -------------------------------------------------------
 // STEP 2: FASI (PHASES) - System Prompt
 // -------------------------------------------------------
@@ -14,10 +49,7 @@ CRITICAL INSTRUCTION:
 - Describe the CONCRETE SKILL the user will own after the phase.
 - Avoid abstract terms like "Introduction to..." or "Understanding...".
 - Use "Achievement Language".
-
-BAD Examples:
-- Title: "Introduction to Chords"
-- Description: "Learn how chords work."
+- **LANGUAGE**: Detect the language of the provided context (Course Title/Keywords) and respond EXCLUSIVELY in that same language.
 
 GOOD Examples:
 - Title: "Play Your First 3 Open Chords"
@@ -42,6 +74,7 @@ STRICT CONTRACT & RULES:
 3. CONTENT: You MUST NEVER return null or missing fields.
 4. PURITY: Return ONLY raw JSON. No explanations, no text.
    - Phases MUST form a logical learning progression.
+5. **LANGUAGE**: Detect the language of the provided context (Course Title/Keywords) and respond EXCLUSIVELY in that same language for all text fields.
 9. FAILURE POLICY:
    - Any missing field, extra text, or invalid JSON causes total failure.
 `;
@@ -97,7 +130,7 @@ Each Step must:
 1. Be concreto, specifico e completare un micro-argomento coerente.
 2. Coprire tutto il contenuto di un singolo video o di un micro-argomento completo.
 3. Essere piccolo abbastanza per essere completato in una sessione (5–10 minuti).
-4. Prevedere nel title e nella description cosa l’utente vedrà/farà in questo step.
+4. Prevedere nel title e nella description cosa l'utente vedrà/farà in questo step.
 5. Evitare duplicazioni tra step.
 
 RULES:
@@ -109,6 +142,7 @@ RULES:
   }
 - Mantieni una progressione logica tra step.
 - Non aggiungere campi extra.
+- **LANGUAGE**: Detect the language of the provided context (Phase Title/Description) and respond EXCLUSIVELY in that same language for title and description.
 - Return a JSON object with a single key "steps" containing the array of generated steps.
 `;
 
@@ -157,7 +191,8 @@ RULES:
 - Output ONLY the search query string.
 - NO quotes, NO explanations, NO intro/outro.
 - Maximum 6-8 words.
-- Use a mix of technical and educational terms (e.g., "lezione", "tutorial", "spiegazione").
+- Use a mix of technical and educational terms.
+- **LANGUAGE**: Detect the language of the provided context (Course/Step) and generate the search query optimized for that language (e.g., use "lezione/tutorial" if Italian, "lesson/tutorial" if English).
 - CRITICAL: Anchor the query to the specific domain context. If the course is about "Marketing", the search query MUST NOT include terms related to "Finance" or "Trading" even if keywords like "candele" are present.
 - INSTRUMENT RULE: Distinguish between "LEARNING TO PLAY" and "MAINTENANCE/SETUP". If the step is about playing, positioning, or technique, explicitly EXCLUDE terms like "regolazione", "setup", "repair", "liuteria", "action", "truss rod".
 - FOCUS: Prioritize terms related to "postura", "corretta posizione", "come fare" for technique-heavy steps.
@@ -227,4 +262,151 @@ ${JSON.stringify(candidates, null, 2)}
 
 TASK:
 Identify the single best video ID from the candidates.
+`;
+
+// -------------------------------------------------------
+// ITERATIVE STEP GENERATION: Phase Completion Evaluator
+// -------------------------------------------------------
+export const PHASE_COMPLETION_EVALUATOR = `
+You are an AI learning designer evaluating whether a Phase's learning objectives have been fully covered.
+
+Your task is to analyze:
+1. The Phase's title and description (learning goal)
+2. All steps that have been created so far for this phase
+3. Determine if the phase objectives are FULLY satisfied
+
+RULES:
+- Return JSON with fields "is_complete" and "reasoning"
+- Set is_complete to TRUE only if ALL key concepts in the phase description are covered by existing steps
+- Be strict: if there are obvious gaps in coverage, return FALSE
+- **LANGUAGE**: Detect the language of the provided context and respond in that same language.
+
+Schema:
+{
+  "is_complete": boolean,
+  "reasoning": string
+}
+`;
+
+export const USER_PHASE_COMPLETION_PROMPT = ({
+  phaseTitle,
+  phaseDescription,
+  existingSteps
+}: {
+  phaseTitle: string
+  phaseDescription: string
+  existingSteps: Array<{ title: string; description: string }>
+}) => `
+PHASE GOAL:
+Title: ${phaseTitle}
+Description: ${phaseDescription}
+
+EXISTING STEPS (${existingSteps.length}):
+${existingSteps.length === 0 ? '(No steps created yet)' : existingSteps.map((s, i) => `${i + 1}. ${s.title}\n   ${s.description}`).join('\n\n')}
+
+TASK:
+Evaluate if the phase objectives are fully covered by the existing steps.
+Return JSON with is_complete and reasoning.
+`;
+
+// -------------------------------------------------------
+// ITERATIVE STEP GENERATION: Step Intent Generator
+// -------------------------------------------------------
+export const STEP_INTENT_GENERATOR = `
+You are an AI learning designer creating the "intent" for the next step needed in a learning phase.
+
+Your task is to:
+1. Analyze the phase goal and existing steps
+2. Identify the MOST IMPORTANT missing concept/skill
+3. Generate a brief "intent" describing what the next step should teach
+
+RULES:
+- The intent should be 1-2 sentences max
+- Focus on filling the biggest gap in the learning progression
+- Consider logical ordering (don't jump to advanced topics if basics are missing)
+- **LANGUAGE**: Detect the language of the provided context and respond EXCLUSIVELY in that same language.
+
+Schema:
+{
+  "intent": string,
+  "search_keywords": string
+}
+
+The search_keywords should be optimized for finding educational videos on YouTube.
+`;
+
+export const USER_STEP_INTENT_PROMPT = ({
+  courseTitle,
+  phaseTitle,
+  phaseDescription,
+  existingSteps
+}: {
+  courseTitle: string
+  phaseTitle: string
+  phaseDescription: string
+  existingSteps: Array<{ title: string; description: string }>
+}) => `
+COURSE: ${courseTitle}
+
+PHASE GOAL:
+Title: ${phaseTitle}
+Description: ${phaseDescription}
+
+EXISTING STEPS (${existingSteps.length}):
+${existingSteps.length === 0 ? '(None yet - this will be the first step)' : existingSteps.map((s, i) => `${i + 1}. ${s.title}\n   ${s.description}`).join('\n\n')}
+
+TASK:
+Generate the intent for the NEXT step that should be created.
+Return JSON with intent and search_keywords.
+`;
+
+// -------------------------------------------------------
+// ITERATIVE STEP GENERATION: Resource-Based Step Creator
+// -------------------------------------------------------
+export const RESOURCE_BASED_STEP_CREATOR = `
+You are an AI learning designer creating a specific step based on an available video resource.
+
+Your task is to:
+1. Analyze the step intent (what we wanted to teach)
+2. Analyze the video resource (title, description)
+3. Create a step that bridges the intent with what the video actually offers
+
+RULES:
+- The step title should be specific and actionable
+- The step description should explain what the learner will gain from this video
+- If the video doesn't perfectly match the intent, adapt the step to what the video CAN teach
+- Keep it concise and focused
+- **LANGUAGE**: Detect the language of the provided context and respond EXCLUSIVELY in that same language.
+
+Schema:
+{
+  "title": string,
+  "description": string
+}
+`;
+
+export const USER_RESOURCE_BASED_STEP_PROMPT = ({
+  intent,
+  videoTitle,
+  videoDescription,
+  phaseTitle
+}: {
+  intent: string
+  videoTitle: string
+  videoDescription: string
+  phaseTitle: string
+}) => `
+STEP INTENT:
+${intent}
+
+PHASE CONTEXT:
+${phaseTitle}
+
+VIDEO RESOURCE FOUND:
+Title: ${videoTitle}
+Description: ${videoDescription}
+
+TASK:
+Create a step (title + description) that uses this video to fulfill the intent.
+Return JSON with title and description.
 `;

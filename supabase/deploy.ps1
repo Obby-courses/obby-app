@@ -1,20 +1,15 @@
-# Script per il deploy sicuro delle funzioni Supabase
-# Questo script garantisce che tutte le funzioni siano caricate DISABILITANDO la verifica del JWT
-# in modo che possano comunicare tra loro tramite SERVICE_ROLE.
+# Script per il deploy automatico di TUTTE le funzioni Supabase
+# Questo script rileva automaticamente le cartelle in ./functions e le deploya
+# disabilitando la verifica del JWT per permettere la comunicazione via SERVICE_ROLE.
 
-$functions = @(
-    "create-macrophases",
-    "create-phases",
-    "create-steps",
-    "generate-resources-for-steps",
-    "search-resources"
-)
+$functionsPath = Join-Path $PSScriptRoot "functions"
+$functions = Get-ChildItem -Path $functionsPath -Directory | Select-Object -ExpandProperty Name
 
-Write-Host "🚀 Inizio Deploy Funzioni Supabase (Safe Mode)..." -ForegroundColor Cyan
+Write-Host "🚀 Rilevate $($functions.Count) funzioni. Inizio Deploy (Safe Mode)..." -ForegroundColor Cyan
 
 foreach ($fn in $functions) {
     Write-Host "📦 Deploying: $fn ..." -ForegroundColor Yellow
     supabase functions deploy $fn --no-verify-jwt
 }
 
-Write-Host "✅ Deploy completato con successo!" -ForegroundColor Green
+Write-Host "✅ Tutte le funzioni sono state deployate con successo!" -ForegroundColor Green
