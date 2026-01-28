@@ -2,12 +2,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  PHASE_COMPLETION_EVALUATOR,
-  RESOURCE_BASED_STEP_CREATOR,
-  STEP_INTENT_GENERATOR,
-  USER_PHASE_COMPLETION_PROMPT,
-  USER_RESOURCE_BASED_STEP_PROMPT,
-  USER_STEP_INTENT_PROMPT
+    PHASE_COMPLETION_EVALUATOR,
+    RESOURCE_BASED_STEP_CREATOR,
+    STEP_INTENT_GENERATOR,
+    USER_PHASE_COMPLETION_PROMPT,
+    USER_RESOURCE_BASED_STEP_PROMPT,
+    USER_STEP_INTENT_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -16,6 +16,7 @@ const corsHeaders = {
 }
 
 const SEARCH_RESOURCES_FN = 'search-resources'
+const GET_SUMMARY_FN = 'get-resource-summary'
 const MAX_ITERATIONS = 10 // Safety limit
 
 serve(async (req: Request) => {
@@ -178,6 +179,40 @@ serve(async (req: Request) => {
       const video = resourceData.video
       console.log(`📺 Video found: "${video.title}"`)
 
+      /* --- 2.3.1) Get video summary (Optional/Modular) --- */
+      let resourceSummary = video.description // Default fallback
+      try {
+        console.log(`📝 Requesting summary for video ${video.url.split('v=')[1]}...`)
+        const summaryRes = await fetch(`${SUPABASE_URL}/functions/v1/${GET_SUMMARY_FN}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SERVICE_ROLE}`,
+          },
+          body: JSON.stringify({
+            resourceId: video.url.split('v=')[1],
+            type: 'youtube',
+            language: 'it',
+            title: video.title,
+            description: video.description
+          }),
+        })
+
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json()
+          if (summaryData.success && summaryData.summary) {
+            resourceSummary = summaryData.summary
+            console.log("✨ Summary received successfully")
+          } else {
+            console.warn("⚠️ Summary function returned success:false or no summary content")
+          }
+        } else {
+          console.error(`❌ Summary extraction failed with status: ${summaryRes.status}`)
+        }
+      } catch (sumErr) {
+        console.error("❌ Summary extraction error:", sumErr.message)
+      }
+
       /* --- 2.4) Create step based on video --- */
       console.log("🏗️ Creating step from video resource...")
       
@@ -220,7 +255,7 @@ serve(async (req: Request) => {
           title: video.title,
           url: video.url,
           thumbnail_url: video.thumbnail_url,
-          summary: video.description,
+          summary: resourceSummary,
           type: 'video'
         })
         .select()

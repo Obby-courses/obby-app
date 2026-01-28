@@ -154,3 +154,6 @@ verify_jwt = false
 
 [functions.generate-resources-for-steps]
 verify_jwt = false
+
+[functions.get-resource-summary]
+verify_jwt = false

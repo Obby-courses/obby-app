@@ -42,18 +42,15 @@ REGOLE OBBLIGATORIE:
 // -------------------------------------------------------
 export const SYSTEM_PHASE = `
 You are a deterministic JSON generator inside a production educational system.
-Your goal is to break down a "Macro-Phase" into a sequence of "Phases" (between 4 and 6).
+Your goal is to break down a "Macro-Phase" into a sequence of exactly 4 "Phases".
 
 CRITICAL INSTRUCTION:
 - Titles and Descriptions must be REALISTIC RESULTS, not generic topics.
 - Describe the CONCRETE SKILL the user will own after the phase.
-- Avoid abstract terms like "Introduction to..." or "Understanding...".
 - Use "Achievement Language".
+- **STRICT BOUNDARY**: You MUST generate phases ONLY for the specific domain provided in the Course Title and Macro-Phase Keywords. 
+- **NO HALLUCINATIONS**: Never use examples from related or unrelated fields (like musical instruments if the topic is sports).
 - **LANGUAGE**: Detect the language of the provided context (Course Title/Keywords) and respond EXCLUSIVELY in that same language.
-
-GOOD Examples:
-- Title: "Play Your First 3 Open Chords"
-- Description: "Switch smoothly between G, C, and D without pausing."
 
 You MUST output valid JSON that matches EXACTLY this schema:
 
@@ -69,14 +66,11 @@ You MUST output valid JSON that matches EXACTLY this schema:
 }
 
 STRICT CONTRACT & RULES:
-1. QUANTITY: You MUST generate between 4 and 6 items in the "phases" array.
+1. QUANTITY: You MUST generate EXACTLY 4 items in the "phases" array.
 2. FORMAT: NEVER wrap the output in markdown or code blocks.
 3. CONTENT: You MUST NEVER return null or missing fields.
 4. PURITY: Return ONLY raw JSON. No explanations, no text.
-   - Phases MUST form a logical learning progression.
-5. **LANGUAGE**: Detect the language of the provided context (Course Title/Keywords) and respond EXCLUSIVELY in that same language for all text fields.
-9. FAILURE POLICY:
-   - Any missing field, extra text, or invalid JSON causes total failure.
+5. **LANGUAGE**: Detect the language of the provided context and respond EXCLUSIVELY in that same language for all text fields.
 `;
 
 // Helper per generare il messaggio utente per le Fasi (CON KEYWORDS)
@@ -102,15 +96,14 @@ CONTEXT (JSON):
 }
 
 TASK:
-Generate between 4 and 6 phases for this macro-phase.
+Generate EXACTLY 4 phases for this macro-phase.
 
 CONSTRAINTS:
 - Use the "course_title" to ensure correct domain context.
-- The "macro_phase.keywords" list is your PRIMARY guide. Infer the specific topics and skills from these tags.
-- Stay strictly within the macro-phase scope defined by the keywords.
-- Respect difficulty level (1 = beginner, 6 = expert)
-- Produce phases usable for step generation
-- **IMPORTANT**: Convert keywords into CONCRETE GOALS. E.g., if keyword is "Fingerstyle", phase is "Play a pattern with thumb and index".
+- The "macro_phase.keywords" list is your ABSOLUTE guide.
+- **IMPORTANT**: If the course is about "${courseTitle}", all phases MUST be strictly related to that topic.
+- Convert keywords into CONCRETE GOALS. 
+- Respect difficulty level (1 = beginner, 6 = expert).
 
 Return ONLY valid JSON matching the system schema.
 `;
