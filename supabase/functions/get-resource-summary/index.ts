@@ -88,46 +88,9 @@ serve(async (req: Request) => {
         }
       }
 
-      // Final check and optional translation (if we got a non-target language summary from Tier 1)
-      if (summary && GROQ_KEY && (language === 'it' || language === 'es' || language === 'fr')) {
-        // Simple internal check: if it looks like English but we want Italian, translate it.
-        // For Tier 2 we already requested the target language, so this is mostly for Tier 1 results.
-        const isEnglish = /^[A-Za-z0-9\s.,!?'"-]+$/.test(summary.substring(0, 50));
-        
-        if (isEnglish) {
-          console.log(`[GROQ] Ensuring translation to ${language}...`)
-          try {
-            const translationRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${GROQ_KEY}`,
-              },
-              body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [
-                  { 
-                    role: "system", 
-                    content: `Traduci in ${language === 'it' ? 'Italiano' : language}. Rispondi solo con la traduzione.` 
-                  },
-                  { role: "user", content: summary }
-                ],
-                temperature: 0.1,
-              }),
-            })
-
-            if (translationRes.ok) {
-              const translationData = await translationRes.json()
-              const translatedText = translationData.choices?.[0]?.message?.content?.trim()
-              if (translatedText) summary = translatedText
-            }
-          } catch (transErr) {
-            console.error("Translation failed:", transErr.message)
-          }
-        }
-      }
-
+      // Final check (Optional translation step removed per user request)
       if (!summary) {
+
         return new Response(JSON.stringify({ success: false, error: "Could not generate any summary" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         })

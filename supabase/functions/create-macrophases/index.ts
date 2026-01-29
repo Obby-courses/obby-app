@@ -78,7 +78,7 @@ serve(async (req: Request) => {
 
     if (mErr) throw new Error(`Errore salvataggio macrofasi: ${mErr.message}`);
 
-    console.log(`✅ STEP 1 COMPLETATO: Corso ${course.id} con ${insertedMacros.length} macro-fasi`);
+    console.log(`✅ STEP 1 COMPLETATO: Corso "${course.title}" con 6 macro-fasi practice-oriented`);
 
     // 4. Response con keywords per debugging
     return new Response(JSON.stringify({ 

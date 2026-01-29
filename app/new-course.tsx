@@ -189,15 +189,14 @@ export default function NewCourseAIScreen() {
           value={courseInput}
           onChangeText={setCourseInput}
           placeholder="Es. Corso intensivo di cucina giapponese per principianti"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.mutedText}
           multiline
           style={{
+            ...typography.body,
             backgroundColor: colors.card,
             borderRadius: radius.md,
             padding: spacing.md,
             minHeight: 120,
-            color: '#FFF',
-            fontSize: 16,
             borderWidth: 1,
             borderColor: colors.border,
             textAlignVertical: 'top',
