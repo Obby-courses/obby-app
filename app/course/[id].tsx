@@ -78,6 +78,8 @@ export default function CourseScreen() {
   const router = useRouter()
 
   const [courseTitle, setCourseTitle] = useState('')
+  const [daysPerStep, setDaysPerStep] = useState<number>(2.33)
+  const [courseCreatedAt, setCourseCreatedAt] = useState<string>('')
   const [phases, setPhases] = useState<Phase[]>([])
   const [steps, setSteps] = useState<Step[]>([])
   const [visibleSteps, setVisibleSteps] = useState<Step[]>([])
@@ -106,11 +108,15 @@ export default function CourseScreen() {
   async function loadCourse() {
     const { data } = await supabase
       .from('courses')
-      .select('title')
+      .select('title, days_per_step, created_at')
       .eq('id', courseId)
       .single()
 
-    if (data) setCourseTitle(data.title)
+    if (data) {
+      setCourseTitle(data.title)
+      if (data.days_per_step) setDaysPerStep(data.days_per_step)
+      if (data.created_at) setCourseCreatedAt(data.created_at)
+    }
   }
 
   async function loadPhases() {
@@ -190,20 +196,31 @@ export default function CourseScreen() {
   /* ---------------- CORE LOGIC ---------------- */
 
   function recomputeVisibleSteps(allSteps: Step[]) {
-    const activePhase = getActivePhase(phases, allSteps)
+    // 1. Trova la prima fase incompleta
+    const firstIncompletePhase = getActivePhase(phases, allSteps)
+    const firstIncompleteOrder = firstIncompletePhase ? firstIncompletePhase.order_index : -1
 
-    let visiblePhaseIds: string[] = []
+    // 2. Trova la fase più avanzata che ha almeno uno step completato
+    let maxCompletedStepOrder = -1
+    allSteps.forEach(step => {
+      if (step.completed) {
+        const phase = phases.find(p => p.id === step.phase_id)
+        if (phase && phase.order_index > maxCompletedStepOrder) {
+          maxCompletedStepOrder = phase.order_index
+        }
+      }
+    })
 
-    if (activePhase) {
-      visiblePhaseIds = phases
-        .filter(
-          (p) =>
-            p.order_index <= activePhase.order_index
-        )
-        .map((p) => p.id)
-    } else {
-      visiblePhaseIds = phases.map((p) => p.id)
+    // 3. La visibilità è il massimo tra le due
+    // Se non ci sono fasi incomplete (corso finito), mostriamo tutto
+    let maxVisibleOrder = Math.max(firstIncompleteOrder, maxCompletedStepOrder)
+    if (firstIncompleteOrder === -1) {
+      maxVisibleOrder = Math.max(...phases.map(p => p.order_index))
     }
+
+    const visiblePhaseIds = phases
+      .filter(p => p.order_index <= maxVisibleOrder)
+      .map(p => p.id)
 
     const visible = allSteps.filter((s) =>
       visiblePhaseIds.includes(s.phase_id)
@@ -366,6 +383,10 @@ export default function CourseScreen() {
             <StepItem
               step={item}
               onToggleCompleted={toggleCompleted}
+              index={visibleSteps.findIndex(s => s.id === item.id)}
+              daysPerStep={daysPerStep}
+              courseCreatedAt={courseCreatedAt}
+              firstIncompleteIndex={visibleSteps.findIndex(s => !s.completed)}
             />
           </View>
         )}

@@ -2,6 +2,7 @@ import LoadingOverlay from '@/components/LoadingOverlay'
 import { LoadingStatus } from '@/lib/loadingMessages'
 import { supabase } from '@/lib/supabase'
 import { colors, layout, radius, spacing, typography } from '@/lib/theme'
+import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
@@ -24,6 +25,7 @@ export default function NewCourseAIScreen() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('CREATING_COURSE')
   const [error, setError] = useState<string | null>(null)
+  const [stepsPerWeek, setStepsPerWeek] = useState(3)
 
   async function handleGenerateComplete() {
     if (!courseInput.trim()) return
@@ -44,7 +46,10 @@ export default function NewCourseAIScreen() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify({ topic: courseInput.trim(), userId: TEST_USER_ID }),
+        body: JSON.stringify({
+          topic: courseInput.trim(),
+          userId: TEST_USER_ID
+        }),
       })
 
       const macroData = await macroRes.json()
@@ -52,6 +57,15 @@ export default function NewCourseAIScreen() {
 
       const courseId = macroData.courseId
       console.log('✅ STEP 1 OK. Course ID:', courseId)
+
+      // AGGIORNA IL CORSO DIRETTAMENTE (senza toccare il backend)
+      const daysPerStep = parseFloat((7 / stepsPerWeek).toFixed(2))
+      const { error: updateError } = await supabase
+        .from('courses')
+        .update({ days_per_step: daysPerStep })
+        .eq('id', courseId)
+
+      if (updateError) console.error('Errore salvataggio days_per_step:', updateError)
 
       // Recuperiamo i testi reali generati dall'AI (Titolo e Descrizione del corso)
       const { data: courseData, error: courseError } = await supabase
@@ -202,6 +216,36 @@ export default function NewCourseAIScreen() {
             textAlignVertical: 'top',
           }}
         />
+
+        {/* SLIDER PER IL TEMPO */}
+        <View style={{ marginTop: spacing.xl }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.body, color: '#FFFFFF', fontWeight: '700' }}>
+              Pace dell'apprendimento
+            </Text>
+            <View style={{ backgroundColor: colors.primaryButton, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>
+                {stepsPerWeek} {stepsPerWeek === 1 ? 'step' : 'step'} / sett
+              </Text>
+            </View>
+          </View>
+
+          <Slider
+            value={stepsPerWeek}
+            minimumValue={1}
+            maximumValue={7}
+            step={1}
+            onValueChange={setStepsPerWeek}
+            minimumTrackTintColor={colors.primaryButton}
+            maximumTrackTintColor="rgba(255,255,255,0.1)"
+            thumbSize={24}
+            thumbTintColor="#FFFFFF"
+          />
+
+          <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: spacing.xs }}>
+            {stepsPerWeek <= 2 ? '🏁 Passo rilassato' : stepsPerWeek <= 5 ? '⚡ Passo costante' : '🔥 Passo intensivo'}
+          </Text>
+        </View>
 
         <Pressable
           onPress={handleGenerateComplete}

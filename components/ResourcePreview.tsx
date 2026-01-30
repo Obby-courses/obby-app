@@ -1,6 +1,7 @@
 
 import { colors, radius, spacing } from '@/lib/theme'
-import React, { useCallback, useState } from 'react'
+import * as ScreenOrientation from 'expo-screen-orientation'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import YoutubePlayer from 'react-native-youtube-iframe'
 
@@ -13,6 +14,30 @@ type ResourcePreviewProps = {
 
 export default function ResourcePreview({ type, url, onClose, visible }: ResourcePreviewProps) {
     const [playing, setPlaying] = useState(true)
+
+    useEffect(() => {
+        const toggleOrientation = async () => {
+            try {
+                if (visible) {
+                    // Quando il video è aperto, permettiamo la rotazione totale 
+                    // (ignorando il blocco del telefono se possibile o sbloccandolo)
+                    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.ALL_BUT_UPSIDE_DOWN)
+                } else {
+                    // Quando chiudiamo, torniamo forzatamente in verticale
+                    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+                }
+            } catch (err) {
+                console.warn("Errore rotazione:", err)
+            }
+        }
+
+        toggleOrientation()
+
+        // Cleanup: torna sempre in verticale se il componente viene smontato
+        return () => {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => { })
+        }
+    }, [visible])
 
     const getVideoId = (url: string) => {
         if (!url) return null;
