@@ -2,6 +2,7 @@ import { Stack } from 'expo-router'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import { useEffect } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 console.log('🔥 _layout FILE LOADED')
 
@@ -18,12 +19,15 @@ export default function RootLayout() {
   }, [])
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack
-        screenOptions={{
-          headerShown: true,
-        }}
-      />
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   )
 }

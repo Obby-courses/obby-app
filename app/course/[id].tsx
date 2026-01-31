@@ -10,8 +10,9 @@ import {
   FlatList,
   Pressable,
   Text,
-  View,
+  View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import StepItem from './StepItem'
 
 const { width } = Dimensions.get('window')
@@ -35,6 +36,7 @@ type Step = {
   phase_id: string
   course_id?: string
   resource: Resource | null
+  created_at?: string
 }
 
 type Phase = {
@@ -146,6 +148,7 @@ export default function CourseScreen() {
         description,
         completed,
         order_index,
+        created_at,
         phase_id,
         course_id,
         resource_id,
@@ -174,6 +177,7 @@ export default function CourseScreen() {
       phase_id: step.phase_id,
       course_id: step.course_id,
       resource: step.resource || null,
+      created_at: step.created_at,
     }))
 
     const sorted = normalized.sort((a, b) => {
@@ -289,14 +293,20 @@ export default function CourseScreen() {
     })
   }
 
-  /* ---------------- HEADER INFO ---------------- */
+  /* ---------------- REFERENCE DATE FOR DEADLINES ---------------- */
+  const lastCompletedStep = [...steps]
+    .filter(s => s.completed && s.created_at)
+    .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())[0]
 
+  const referenceDate = lastCompletedStep?.created_at || courseCreatedAt
+
+  /* ---------------- HEADER INFO ---------------- */
   const currentStep = visibleSteps[currentIndex]
   const currentPhaseTitle = currentStep
     ? phasesMap[currentStep.phase_id]
     : null
 
-  /* ---------------- UI ---------------- */
+  const insets = useSafeAreaInsets()
 
   return (
     <View
@@ -308,7 +318,7 @@ export default function CourseScreen() {
       {/* HEADER CON BACK BUTTON */}
       <View
         style={{
-          paddingTop: 48,
+          paddingTop: insets.top + spacing.sm,
           paddingHorizontal: spacing.lg,
           paddingBottom: spacing.xs,
         }}
@@ -352,6 +362,7 @@ export default function CourseScreen() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
+        bounces={false}
         keyExtractor={(item) => item.id}
         onMomentumScrollEnd={(e) => {
           const index = Math.round(
@@ -383,10 +394,11 @@ export default function CourseScreen() {
             <StepItem
               step={item}
               onToggleCompleted={toggleCompleted}
-              index={visibleSteps.findIndex(s => s.id === item.id)}
+              index={steps.findIndex(s => s.id === item.id)} // Use global index
               daysPerStep={daysPerStep}
               courseCreatedAt={courseCreatedAt}
-              firstIncompleteIndex={visibleSteps.findIndex(s => !s.completed)}
+              firstIncompleteIndex={steps.findIndex(s => !s.completed)} // Use global index
+              referenceDate={referenceDate}
             />
           </View>
         )}

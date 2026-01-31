@@ -6,6 +6,7 @@ import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 /* =======================================================
     TIPI SINCRONIZZATI
@@ -182,45 +183,76 @@ export default function NewCourseAIScreen() {
     }
   }
 
+  const insets = useSafeAreaInsets()
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: layout.screenPadding, paddingTop: 60 }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: layout.screenPadding,
+          paddingTop: insets.top + spacing.md,
+          paddingBottom: insets.bottom + spacing.xl
+        }}
+        bounces={false}
+        alwaysBounceVertical={false}
+      >
 
         {/* Pulsante Indietro */}
         <Pressable onPress={() => router.back()} style={{ marginBottom: spacing.md }}>
           <Text style={{ fontSize: 32, color: colors.primaryButton }}>←</Text>
         </Pressable>
 
-        <Text style={{ ...typography.title, color: '#FFFFFF', marginBottom: spacing.sm }}>
+        <Text style={{ ...typography.title, color: '#000000', marginBottom: spacing.sm }}>
           AI Builder
         </Text>
 
-        <Text style={{ ...typography.body, color: '#CCCCCC', marginBottom: spacing.lg }}>
+        <Text style={{ ...typography.body, color: '#000000', marginBottom: spacing.lg }}>
           Descrivi cosa vuoi imparare e l'AI creerà un percorso su misura per te.
         </Text>
 
-        <TextInput
-          value={courseInput}
-          onChangeText={setCourseInput}
-          placeholder="Es. Corso intensivo di cucina giapponese per principianti"
-          placeholderTextColor={colors.mutedText}
-          multiline
-          style={{
-            ...typography.body,
-            backgroundColor: colors.card,
-            borderRadius: radius.md,
-            padding: spacing.md,
-            minHeight: 120,
-            borderWidth: 1,
-            borderColor: colors.border,
-            textAlignVertical: 'top',
-          }}
-        />
+        <View style={{ position: 'relative' }}>
+          <TextInput
+            value={courseInput}
+            onChangeText={setCourseInput}
+            placeholder="Es. Corso intensivo di cucina giapponese per principianti"
+            placeholderTextColor={colors.mutedText}
+            multiline
+            style={{
+              ...typography.body,
+              backgroundColor: colors.card,
+              borderRadius: radius.md,
+              padding: spacing.md,
+              paddingRight: 60,
+              minHeight: 200,
+              borderWidth: 1,
+              borderColor: colors.border,
+              textAlignVertical: 'top',
+              color: '#000000'
+            }}
+          />
+          {courseInput.trim().length > 0 && !isProcessing && (
+            <Pressable
+              onPress={handleGenerateComplete}
+              style={{
+                position: 'absolute',
+                top: spacing.sm,
+                right: spacing.sm,
+                backgroundColor: colors.primaryButton,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                borderRadius: radius.sm,
+                elevation: 2,
+              }}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>VAI</Text>
+            </Pressable>
+          )}
+        </View>
 
         {/* SLIDER PER IL TEMPO */}
         <View style={{ marginTop: spacing.xl }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.body, color: '#FFFFFF', fontWeight: '700' }}>
+            <Text style={{ ...typography.body, color: '#000000', fontWeight: '700' }}>
               Pace dell'apprendimento
             </Text>
             <View style={{ backgroundColor: colors.primaryButton, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
@@ -236,10 +268,11 @@ export default function NewCourseAIScreen() {
             maximumValue={7}
             step={1}
             onValueChange={setStepsPerWeek}
-            minimumTrackTintColor={colors.primaryButton}
-            maximumTrackTintColor="rgba(255,255,255,0.1)"
+            minimumTrackTintColor={colors.mutedText}
+            maximumTrackTintColor="#EEEEEE"
             thumbSize={24}
-            thumbTintColor="#FFFFFF"
+            thumbTintColor={colors.mutedText}
+            trackHeight={8}
           />
 
           <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: spacing.xs }}>
@@ -247,22 +280,22 @@ export default function NewCourseAIScreen() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={handleGenerateComplete}
-          disabled={isProcessing || courseInput.trim().length === 0}
-          style={{
-            backgroundColor: colors.primaryButton,
-            padding: spacing.md,
-            borderRadius: radius.md,
-            marginTop: spacing.xl,
-            opacity: isProcessing ? 0.6 : 1,
-            elevation: 2
-          }}
-        >
-          <Text style={{ color: '#FFF', textAlign: 'center', fontWeight: '700', fontSize: 18 }}>
-            {isProcessing ? 'Costruendo il tuo percorso...' : 'Inizia Generazione'}
-          </Text>
-        </Pressable>
+        {isProcessing && (
+          <View
+            style={{
+              backgroundColor: colors.primaryButton,
+              padding: spacing.md,
+              borderRadius: radius.md,
+              marginTop: spacing.xl,
+              opacity: 0.6,
+              elevation: 2
+            }}
+          >
+            <Text style={{ color: '#FFF', textAlign: 'center', fontWeight: '700', fontSize: 18 }}>
+              Costruendo il tuo percorso...
+            </Text>
+          </View>
+        )}
 
         {/* Box Errore */}
         {error && (

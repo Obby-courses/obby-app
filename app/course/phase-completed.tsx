@@ -1,12 +1,13 @@
-import { View, Text, Pressable } from 'react-native'
-import { useEffect, useState } from 'react'
+import LoadingOverlay from '@/components/LoadingOverlay'
+import { supabase } from '@/lib/supabase'
+import { colors, radius, spacing, typography } from '@/lib/theme'
 import {
   useLocalSearchParams,
   useRouter,
 } from 'expo-router'
-import { supabase } from '@/lib/supabase'
-import { colors, spacing, typography, radius } from '@/lib/theme'
-import LoadingOverlay from '@/components/LoadingOverlay'
+import { useEffect, useState } from 'react'
+import { Pressable, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type Phase = {
   id: string
@@ -31,7 +32,7 @@ export default function PhaseCompletedScreen() {
   const [phase, setPhase] = useState<Phase | null>(null)
   const [nextPhase, setNextPhase] = useState<Phase | null>(null)
   const [course, setCourse] = useState<Course | null>(null)
-  
+
   const [loading, setLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
@@ -113,7 +114,7 @@ export default function PhaseCompletedScreen() {
 
   async function generateStepsAndContinue() {
     if (!courseId || !nextPhase || !course) return
-    
+
     setGenError(null)
     setIsGenerating(true)
 
@@ -203,8 +204,10 @@ export default function PhaseCompletedScreen() {
     )
   }
 
+  const insets = useSafeAreaInsets()
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, justifyContent: 'center' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg, justifyContent: 'center' }}>
       <View style={{ backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.xl }}>
         <Text style={{ fontSize: 32, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm, textAlign: 'center' }}>🎉</Text>
         <Text style={{ ...typography.title, marginBottom: spacing.md, textAlign: 'center' }}>Fase completata</Text>

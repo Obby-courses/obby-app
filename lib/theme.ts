@@ -6,7 +6,7 @@ export const colors = {
   textPrimary: '#111111',
   textSecondary: '#555555',
   mutedText: '#999999',
-  accent: '#6D5DF6',
+  accent: '#000000',
   primaryButton: '#000000',
   successBg: '#E6F7EC',
   successText: '#1E7F43',

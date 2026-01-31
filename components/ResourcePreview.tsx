@@ -21,7 +21,7 @@ export default function ResourcePreview({ type, url, onClose, visible }: Resourc
                 if (visible) {
                     // Quando il video è aperto, permettiamo la rotazione totale 
                     // (ignorando il blocco del telefono se possibile o sbloccandolo)
-                    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.ALL_BUT_UPSIDE_DOWN)
+                    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.ALL)
                 } else {
                     // Quando chiudiamo, torniamo forzatamente in verticale
                     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)

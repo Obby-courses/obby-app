@@ -1,21 +1,23 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  ActivityIndicator,
-  Modal,
-} from 'react-native'
-import { useCallback, useState, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
-import { useRouter, useFocusEffect } from 'expo-router'
+import WeeklyCalendar from '@/components/WeeklyCalendar'
 import {
   colors,
+  radius,
   spacing,
   typography,
-  radius,
 } from '@/lib/theme'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useCallback, useMemo, useState } from 'react'
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { supabase } from '../lib/supabase'
 
 /* =======================
    TIPI
@@ -23,6 +25,8 @@ import {
 type Step = {
   id: string
   completed: boolean
+  order_index: number
+  created_at: string
 }
 
 type Phase = {
@@ -36,6 +40,8 @@ type Course = {
   id: string
   title: string
   description: string
+  created_at: string
+  days_per_step: number | null
   phases: Phase[]
 }
 
@@ -45,7 +51,7 @@ type Course = {
 export default function Index() {
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
-  
+
   // STATI PER ELIMINAZIONE
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -68,13 +74,17 @@ export default function Index() {
         id,
         title,
         description,
+        created_at,
+        days_per_step,
         phases (
           id,
           title,
           order_index,
           steps (
             id,
-            completed
+            completed,
+            order_index,
+            created_at
           )
         )
       `)
@@ -120,6 +130,55 @@ export default function Index() {
     }
   }, [])
 
+  const tasksByDate = useMemo(() => {
+    const map: Record<string, number> = {}
+
+    courses.forEach((course) => {
+      const allSteps: Step[] = []
+      const sortedPhases = [...course.phases].sort(
+        (a, b) => a.order_index - b.order_index
+      )
+      sortedPhases.forEach((phase) => {
+        const sortedSteps = [...phase.steps].sort(
+          (a, b) => a.order_index - b.order_index
+        )
+        allSteps.push(...sortedSteps)
+      })
+
+      const lastCompleted = [...allSteps]
+        .filter((s) => s.completed && s.created_at)
+        .sort(
+          (a, b) =>
+            new Date(b.created_at!).getTime() -
+            new Date(a.created_at!).getTime()
+        )[0]
+
+      const referenceDate = lastCompleted
+        ? new Date(lastCompleted.created_at)
+        : new Date(course.created_at)
+
+      const firstIncompleteIndex = allSteps.findIndex((s) => !s.completed)
+      if (firstIncompleteIndex === -1) return
+
+      allSteps.forEach((step, index) => {
+        if (!step.completed) {
+          const relativeIndex = index - firstIncompleteIndex
+          const deadline = new Date(
+            referenceDate.getTime() +
+            (relativeIndex + 1) * (course.days_per_step || 2.33) * 24 * 60 * 60 * 1000
+          )
+          const year = deadline.getFullYear()
+          const month = String(deadline.getMonth() + 1).padStart(2, '0')
+          const day = String(deadline.getDate()).padStart(2, '0')
+          const dateKey = `${year}-${month}-${day}`
+          map[dateKey] = (map[dateKey] || 0) + 1
+        }
+      })
+    })
+
+    return map
+  }, [courses])
+
   const renderCourse = useCallback(({ item }: { item: Course }) => {
     const activePhase = getActivePhase(item.phases)
     const steps = activePhase?.steps || []
@@ -134,8 +193,8 @@ export default function Index() {
       >
         <View style={styles.courseHeaderRow}>
           <Text style={styles.courseTitle} numberOfLines={1}>{item.title}</Text>
-          
-          <Pressable 
+
+          <Pressable
             onPress={(e) => {
               e.stopPropagation() // Impedisce l'apertura del corso
               setCourseToDelete(item)
@@ -146,12 +205,6 @@ export default function Index() {
             <Text style={{ fontSize: 18, color: colors.mutedText }}>🗑️</Text>
           </Pressable>
         </View>
-
-        {!!item.description && (
-          <Text style={styles.courseDesc} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
 
         {!!activePhase && (
           <Text style={styles.phaseTitle}>
@@ -176,6 +229,8 @@ export default function Index() {
     )
   }, [router, getActivePhase])
 
+  const insets = useSafeAreaInsets()
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -185,13 +240,13 @@ export default function Index() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Obby</Text>
           <Text style={styles.subtitle}>I tuoi corsi</Text>
         </View>
-        
+
         <Pressable
           onPress={() => router.push('/new-course')}
           style={styles.addButton}
@@ -200,15 +255,26 @@ export default function Index() {
         </Pressable>
       </View>
 
-      <FlatList
-        data={courses}
-        keyExtractor={(item) => item.id}
-        renderItem={renderCourse}
-        contentContainerStyle={courses.length === 0 && styles.emptyList}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>Nessun corso disponibile</Text>
-        }
-      />
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <WeeklyCalendar tasksByDate={tasksByDate} />
+      </View>
+
+      <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
+        <FlatList
+          data={courses}
+          keyExtractor={(item) => item.id}
+          renderItem={renderCourse}
+          contentContainerStyle={[
+            { paddingTop: spacing.md, paddingBottom: spacing.xl },
+            courses.length === 0 && styles.emptyList,
+          ]}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>Nessun corso disponibile</Text>
+          }
+          bounces={false}
+          alwaysBounceVertical={false}
+        />
+      </View>
 
       {/* MODALE DI CONFERMA (POOP) */}
       <Modal
@@ -225,15 +291,15 @@ export default function Index() {
             <Text style={styles.modalTitle}>
               {deleteError ? "Errore" : "Elimina corso?"}
             </Text>
-            
+
             <Text style={[styles.modalText, deleteError ? { color: '#f00' } : null]}>
-              {deleteError 
-                ? deleteError 
+              {deleteError
+                ? deleteError
                 : `Sei sicuro di voler eliminare "${courseToDelete?.title}"? L'azione è definitiva.`}
             </Text>
 
             <View style={styles.modalButtons}>
-              <Pressable 
+              <Pressable
                 style={[styles.modalBtn, styles.modalBtnCancel]}
                 onPress={() => {
                   setCourseToDelete(null)
@@ -244,7 +310,7 @@ export default function Index() {
                 <Text style={styles.modalBtnTextCancel}>Annulla</Text>
               </Pressable>
 
-              <Pressable 
+              <Pressable
                 style={[styles.modalBtn, styles.modalBtnDelete]}
                 onPress={confirmDelete}
                 disabled={isDeleting}
@@ -266,7 +332,7 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: spacing.lg,
+    // padding: spacing.lg, // Removed as padding is now handled by ScrollView's contentContainerStyle
     backgroundColor: colors.background,
   },
   centered: {
@@ -278,7 +344,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: spacing.lg,
-    paddingTop: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
   },
   addButton: {
     width: 48,
