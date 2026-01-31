@@ -402,6 +402,7 @@ export default function CourseScreen() {
             />
           </View>
         )}
+        contentContainerStyle={{ paddingBottom: 100 }}
       />
     </View>
   )

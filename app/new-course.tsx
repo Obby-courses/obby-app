@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useAuth } from '../contexts/AuthContext'
 
 /* =======================================================
     TIPI SINCRONIZZATI
@@ -18,9 +19,9 @@ type Course = {
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-const TEST_USER_ID = '04b200b1-75ff-4198-86a6-0d98485fbe02'
 
 export default function NewCourseAIScreen() {
+  const { user } = useAuth()
   const router = useRouter()
   const [courseInput, setCourseInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -49,7 +50,7 @@ export default function NewCourseAIScreen() {
         },
         body: JSON.stringify({
           topic: courseInput.trim(),
-          userId: TEST_USER_ID
+          userId: user?.id
         }),
       })
 

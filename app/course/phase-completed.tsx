@@ -182,6 +182,8 @@ export default function PhaseCompletedScreen() {
   }
 
   /* ---------------- UI ---------------- */
+  const insets = useSafeAreaInsets()
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
@@ -203,8 +205,6 @@ export default function PhaseCompletedScreen() {
       </View>
     )
   }
-
-  const insets = useSafeAreaInsets()
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg, justifyContent: 'center' }}>

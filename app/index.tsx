@@ -1,12 +1,6 @@
 import WeeklyCalendar from '@/components/WeeklyCalendar'
-import {
-  colors,
-  radius,
-  spacing,
-  typography,
-} from '@/lib/theme'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -14,10 +8,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
+  View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { colors, radius, spacing, typography } from '../lib/theme'
 
 /* =======================
    TIPI
@@ -50,13 +46,14 @@ type Course = {
 ======================= */
 export default function Index() {
   const [courses, setCourses] = useState<Course[]>([])
-  const [loading, setLoading] = useState(true)
+  const [coursesLoading, setCoursesLoading] = useState(true)
 
   // STATI PER ELIMINAZIONE
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  const { user, profile, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
 
   // Carica i corsi ogni volta che la schermata torna in primo piano
@@ -67,7 +64,7 @@ export default function Index() {
   )
 
   async function loadCourses() {
-    setLoading(true)
+    setCoursesLoading(true)
     const { data, error } = await supabase
       .from('courses')
       .select(`
@@ -93,7 +90,7 @@ export default function Index() {
     if (!error && data) {
       setCourses(data as Course[])
     }
-    setLoading(false)
+    setCoursesLoading(false)
   }
 
   // Funzione per confermare ed eseguire l'eliminazione
@@ -231,7 +228,8 @@ export default function Index() {
 
   const insets = useSafeAreaInsets()
 
-  if (loading) {
+  // Se siamo in caricamento auth, mostra loader
+  if (authLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -243,16 +241,20 @@ export default function Index() {
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Obby</Text>
-          <Text style={styles.subtitle}>I tuoi corsi</Text>
+          <Text style={styles.greeting}>
+            Ciao, {profile?.full_name || (user?.email?.split('@')[0])}!
+          </Text>
+          <Text style={styles.subGreeting}>I tuoi corsi</Text>
         </View>
 
-        <Pressable
-          onPress={() => router.push('/new-course')}
-          style={styles.addButton}
-        >
-          <Text style={styles.addButtonText}>+</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={() => router.push('/new-course')}
+            style={styles.addButton}
+          >
+            <Text style={styles.addButtonText}>+</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={{ paddingHorizontal: spacing.lg }}>
@@ -260,20 +262,24 @@ export default function Index() {
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
-        <FlatList
-          data={courses}
-          keyExtractor={(item) => item.id}
-          renderItem={renderCourse}
-          contentContainerStyle={[
-            { paddingTop: spacing.md, paddingBottom: spacing.xl },
-            courses.length === 0 && styles.emptyList,
-          ]}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Nessun corso disponibile</Text>
-          }
-          bounces={false}
-          alwaysBounceVertical={false}
-        />
+        {coursesLoading ? (
+          <ActivityIndicator style={{ marginTop: 40 }} size="small" color={colors.mutedText} />
+        ) : (
+          <FlatList
+            data={courses}
+            keyExtractor={(item) => item.id}
+            renderItem={renderCourse}
+            contentContainerStyle={[
+              { paddingTop: spacing.md, paddingBottom: 100 },
+              courses.length === 0 && styles.emptyList,
+            ]}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>Nessun corso disponibile</Text>
+            }
+            bounces={false}
+            alwaysBounceVertical={false}
+          />
+        )}
       </View>
 
       {/* MODALE DI CONFERMA (POOP) */}
@@ -332,7 +338,6 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // padding: spacing.lg, // Removed as padding is now handled by ScrollView's contentContainerStyle
     backgroundColor: colors.background,
   },
   centered: {
@@ -363,8 +368,21 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
   },
+  greeting: {
+    ...typography.title,
+    fontSize: 22,
+  },
+  subGreeting: {
+    ...typography.small,
+  },
   subtitle: {
     ...typography.small,
+  },
+  profileButton: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   course: {
     padding: spacing.md,
