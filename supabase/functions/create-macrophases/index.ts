@@ -64,15 +64,15 @@ serve(async (req: Request) => {
 
     if (cErr) throw new Error(`Errore salvataggio corso: ${cErr.message}`);
 
-    // 3. Salvataggio Macro-Fasi CON KEYWORDS
+    // 3. Salvataggio Macro-Fasi CON KEYWORDS e sanitizzazione numeri
     const { data: insertedMacros, error: mErr } = await supabase.from("macro_phases").insert(
       content.macro_phases.map(m => ({
         course_id: course.id,
         title: m.title,
         description: m.description,
-        keywords: m.keywords || [], // Salvataggio keywords
-        estimated_months: m.estimated_months,
-        order_index: m.order_index
+        keywords: m.keywords || [],
+        estimated_months: Math.ceil(parseFloat(m.estimated_months as any) || 1), // Forza intero (min 1)
+        order_index: Math.round(parseFloat(m.order_index as any)) // Forza intero
       }))
     ).select();
 

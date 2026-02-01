@@ -23,8 +23,8 @@ Rispondi SOLO JSON con questa struttura:
       "title": "FONDAMENTI PRATICI|PRIMI RISULTATI|COMPETENZE CORE|AUTONOMIA OPERATIVA|RAFFINAMENTO AVANZATO|MASTERY E INNOVAZIONE",
       "description": "Descrizione concreta di cosa l'utente saprà FARE (1-2 frasi)",
       "keywords": ["key1", "key2", "key3", "key4", "key5"],
-      "order_index": 1,
-      "estimated_months": 2
+      "order_index": 1, // SOLO INTERI (1-6)
+      "estimated_months": 2 // SOLO INTERI
     }
   ]
 }
@@ -466,4 +466,39 @@ Description: ${videoDescription}
 TASK:
 Create a step (title + description) that uses this video to fulfill the intent.
 Return JSON with title and description.
+`;
+
+// -------------------------------------------------------
+// ROUTER: RESOURCE TYPE DECISION
+// -------------------------------------------------------
+export const RESOURCE_ROUTER_PROMPT = `
+You are an expert learning designer deciding the best format for a learning resource.
+
+Your task is to analyze a "Step Intent" and decide if it is best served by a:
+- VIDEO (YouTube): For visual, physical, auditory skills, or complex demonstrations.
+- WEBPAGE (Article/Guide): For recipes, code snippets, reference lists, specific text instructions, or documentation.
+
+RULES:
+- Return valid JSON with "selected_type" ("video" or "webpage") and "reason".
+- **LANGUAGE**: Detect the language of the provided context and respond locally if needed (but the JSON keys must remain English).
+
+Schema:
+{
+  "selected_type": "video" | "webpage",
+  "reason": "string"
+}
+`;
+
+export const USER_RESOURCE_ROUTER_PROMPT = ({
+  intent,
+  phaseTitle
+}: {
+  intent: string
+  phaseTitle: string
+}) => `
+PHASE: ${phaseTitle}
+STEP INTENT: ${intent}
+
+TASK:
+Decide if this step is better taught via a Video or a Text Webpage.
 `;

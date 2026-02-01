@@ -17,6 +17,8 @@ type Course = {
   description: string
 }
 
+type SearchMode = 'video' | 'web' | 'mixed'
+
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
@@ -28,6 +30,7 @@ export default function NewCourseAIScreen() {
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('CREATING_COURSE')
   const [error, setError] = useState<string | null>(null)
   const [stepsPerWeek, setStepsPerWeek] = useState(3)
+  const [searchMode, setSearchMode] = useState<SearchMode>('mixed')
 
   async function handleGenerateComplete() {
     if (!courseInput.trim()) return
@@ -143,6 +146,7 @@ export default function NewCourseAIScreen() {
           phaseDescription: targetPhase.description,
           courseTitle: courseData.title,
           courseDescription: courseData.description,
+          searchMode, // Passa la modalità scelta
         }),
       })
 
@@ -279,6 +283,43 @@ export default function NewCourseAIScreen() {
           <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: spacing.xs }}>
             {stepsPerWeek <= 2 ? '🏁 Passo rilassato' : stepsPerWeek <= 5 ? '⚡ Passo costante' : '🔥 Passo intensivo'}
           </Text>
+        </View>
+
+        {/* SELECTOR: RESOURCE TYPE */}
+        <View style={{ marginTop: spacing.lg }}>
+          <Text style={{ ...typography.body, color: '#000000', fontWeight: '700', marginBottom: spacing.sm }}>
+            Tipo di Risorse
+          </Text>
+          <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: 4, borderWidth: 1, borderColor: colors.border }}>
+            {(['video', 'mixed', 'web'] as const).map((mode) => {
+              const isActive = searchMode === mode
+              const labels = { video: 'Solo Video', mixed: 'Misto (AI)', web: 'Solo Web' }
+              const icons = { video: '▶️', mixed: '✨', web: '🌐' }
+
+              return (
+                <Pressable
+                  key={mode}
+                  onPress={() => setSearchMode(mode)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: spacing.sm,
+                    borderRadius: radius.sm,
+                    backgroundColor: isActive ? colors.primaryButton : 'transparent',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Text style={{
+                    color: isActive ? '#FFF' : '#000',
+                    fontWeight: isActive ? '700' : '400',
+                    fontSize: 13
+                  }}>
+                    {icons[mode]} {labels[mode]}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
         </View>
 
         {isProcessing && (
