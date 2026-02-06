@@ -16,38 +16,37 @@ Sei ARCHITETTO MACROFASE UNIVERSALE. Il tuo compito è progettare un percorso di
 
 Rispondi SOLO JSON con questa struttura:
 {
-  "course_title": "Titolo del corso (max 100 caratteri)",
-  "course_description": "Descrizione generale (2-3 frasi)",
+  "course_title": "Titolo del corso",
+  "course_description": "Descrizione generale",
+  "verification_mode": "project_delivery", 
   "macro_phases": [
     {
-      "title": "FONDAMENTI PRATICI|PRIMI RISULTATI|COMPETENZE CORE|AUTONOMIA OPERATIVA|RAFFINAMENTO AVANZATO|MASTERY E INNOVAZIONE",
-      "description": "Descrizione concreta di cosa l'utente saprà FARE (1-2 frasi)",
-      "keywords": ["key1", "key2", "key3", "key4", "key5"],
-      "order_index": 1, // SOLO INTERI (1-6)
-      "estimated_months": 2 // SOLO INTERI
+      "title": "FONDAMENTI PRATICI",
+      "description": "Descrizione dell'outcome",
+      "keywords": ["key1", "key2"],
+      "order_index": 1,
+      "estimated_months": 2
     }
   ]
 }
 
 REGOLE OBBLIGATORIE:
-- ESATTAMENTE 6 macrofasi (order_index da 1 a 6)
-- order_index rappresenta il livello: 1=primi passi pratici, 6=mastery
-- Progressione: ogni fase integra teoria E pratica, con crescente autonomia
-- Titoli FISSI (usa questi ESATTI titoli nella lingua rilevata):
-  1. FONDAMENTI PRATICI (EN: PRACTICAL FOUNDATIONS)
-  2. PRIMI RISULTATI (EN: FIRST RESULTS)
-  3. COMPETENZE CORE (EN: CORE SKILLS)
-  4. AUTONOMIA OPERATIVA (EN: OPERATIONAL AUTONOMY)
-  5. RAFFINAMENTO AVANZATO (EN: ADVANCED REFINEMENT)
-  6. MASTERY E INNOVAZIONE (EN: MASTERY & INNOVATION)
-- description: Spiega cosa l'utente saprà FARE concretamente al termine della macro-fase (outcome-oriented)
-- keywords: 5-8 parole chiave PRATICHE e OPERATIVE (non teoriche)
-- **LINGUA**: Rileva la lingua del topic e rispondi in quella lingua per description e titoli (se tradotti sopra).
+- ESATTAMENTE 6 macrofasi (order_index da 1 a 6).
+- Titoli fissi (usa questi esatti titoli):
+  1. FONDAMENTI PRATICI
+  2. PRIMI RISULTATI
+  3. COMPETENZE CORE
+  4. AUTONOMIA OPERATIVA
+  5. RAFFINAMENTO AVANZATO
+  6. MASTERY E INNOVAZIONE
+- **verification_mode**: Scegli esattamente UNO dei seguenti valori in base al topic: "audio_performance", "video_performance", "physical_result", "code_repository", "project_delivery", "text_submission".
+- description: Spiega cosa l'utente saprà FARE concretamente al termine della macro-fase.
+- keywords: 5-8 parole chiave PRATICHE.
+- **LINGUA**: Rileva la lingua del topic e rispondi in quella lingua per description e titoli (se tradotti in EN usa quelli indicati sopra). Se il topic è in Italiano, usa i titoli in Italiano.
 
 FILOSOFIA:
-- Ogni macro-fase deve contenere azione pratica, non solo teoria
-- La fase 1 già permette all'utente di produrre qualcosa di tangibile
-- Progressione basata su complessità dei risultati, non su teoria→pratica
+- Ogni macro-fase deve contenere azione pratica.
+- Progressione basata su complessità dei risultati.
 `;
 
 // -------------------------------------------------------
@@ -501,4 +500,46 @@ STEP INTENT: ${intent}
 
 TASK:
 Decide if this step is better taught via a Video or a Text Webpage.
+`;
+
+// -------------------------------------------------------
+// STEP 6: MILESTONE GENERATION - System Prompt
+// -------------------------------------------------------
+export const MILESTONE_GENERATOR = `
+You are an expert learning designer. Your task is to generate a challenge or milestone that concludes a learning phase.
+This milestone should be a synthesis of all the skills learned in the steps of that phase.
+
+RULES:
+- The milestone must be a practical "Final Boss" challenge.
+- It must require applying the knowledge from the provided steps.
+- The description must be clear, motivating, and provide specific instructions on what to achieve.
+- Detect the language of the phase/steps and respond EXCLUSIVELY in that same language.
+- Return valid JSON matching this schema:
+{
+  "title": string,
+  "description": string,
+  "milestone_type": "target_metric" | "media_upload" | "external_link" | "text_submission"
+}
+`;
+
+export const USER_MILESTONE_PROMPT = ({
+  phaseTitle,
+  phaseDescription,
+  steps
+}: {
+  phaseTitle: string
+  phaseDescription: string
+  steps: Array<{ title: string; description: string }>
+}) => `
+PHASE CONTEXT:
+Title: ${phaseTitle}
+Description: ${phaseDescription}
+
+STEPS COMPLETED IN THIS PHASE:
+${steps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')}
+
+TASK:
+Based on these steps, generate a final "Milestone" challenge. 
+It must be a realistic project or goal that demonstrates mastery of the phase.
+Return ONLY valid JSON.
 `;

@@ -35,8 +35,18 @@ export default function PhaseCompletedScreen() {
 
   const [loading, setLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(true)
   const [genError, setGenError] = useState<string | null>(null)
   const [nextPhaseHasSteps, setNextPhaseHasSteps] = useState(true)
+
+  /* ---------------- ANIMATION ---------------- */
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSuccessOverlay(false)
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [])
 
   /* ---------------- LOAD ---------------- */
 
@@ -87,14 +97,6 @@ export default function PhaseCompletedScreen() {
     if (!nextError && nextData && nextData.length > 0) {
       const next = nextData[0]
       setNextPhase(next)
-
-      const { data: stepsData } = await supabase
-        .from('steps')
-        .select('id')
-        .eq('phase_id', next.id)
-        .limit(1)
-
-      setNextPhaseHasSteps(!!(stepsData && stepsData.length > 0))
     } else {
       setNextPhase(null)
     }
@@ -102,83 +104,9 @@ export default function PhaseCompletedScreen() {
     setLoading(false)
   }
 
-  /* ---------------- GENERATE STEPS ---------------- */
-
-  async function handleContinue() {
-    if (nextPhase && !nextPhaseHasSteps) {
-      await generateStepsAndContinue()
-    } else {
-      router.replace(`/course/${courseId}`)
-    }
-  }
-
-  async function generateStepsAndContinue() {
-    if (!courseId || !nextPhase || !course) return
-
-    setGenError(null)
-    setIsGenerating(true)
-
-    try {
-      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
-      const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-
-      // 1. CHIAMATA PER CREARE GLI STEP (MODIFICATA)
-      const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/create-steps`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            courseId,
-            phaseId: nextPhase.id,
-            phaseTitle: nextPhase.title,
-            courseTitle: phase?.title ?? '',
-            courseDescription: phase?.title ?? ''
-          }),
-        }
-      )
-
-      const data = await res.json()
-
-      if (!res.ok || !data.success) {
-        throw new Error(data?.error || 'Errore creazione step')
-      }
-
-      console.log('✅ Steps created successfully, count:', data.count)
-
-      // 2. NUOVA CHIAMATA PER GENERARE LE RISORSE (Markdown/Link)
-      console.log('🔍 Generating resources for steps...')
-      const res2 = await fetch(
-        `${SUPABASE_URL}/functions/v1/generate-resources-for-steps`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            phaseId: nextPhase.id
-          }),
-        }
-      )
-
-      const data2 = await res2.json()
-      console.log('📦 generate-resources-for-steps:', data2)
-
-      if (!res2.ok || !data2.success) {
-        throw new Error('Errore generazione risorse')
-      }
-
-      // 3. FINE E REINDIRIZZAMENTO
-      router.replace(`/course/${courseId}`)
-    } catch (err: any) {
-      console.error('❌ generateStepsAndContinue error:', err)
-      setGenError(err?.message || 'Errore generazione contenuti')
-      setIsGenerating(false)
-    }
+  /* ---------------- CONTINUE ---------------- */
+  function handleContinue() {
+    router.replace(`/course/${courseId}`)
   }
 
   /* ---------------- UI ---------------- */
@@ -244,7 +172,10 @@ export default function PhaseCompletedScreen() {
           <Text style={{ textAlign: 'center', color: isGenerating ? colors.mutedText : colors.textSecondary, fontWeight: '500', fontSize: 15 }}>Torna al corso</Text>
         </Pressable>
       </View>
-      <LoadingOverlay visible={isGenerating} status="GENERATING_STEPS" />
+      <LoadingOverlay
+        visible={showSuccessOverlay || isGenerating}
+        status={showSuccessOverlay ? 'SUCCESS_PHASE' : 'GENERATING_MILESTONE'}
+      />
     </View>
   )
 }

@@ -59,7 +59,8 @@ serve(async (req: Request) => {
     const { data: course, error: cErr } = await supabase.from("courses").insert({
       user_id: userId,
       title: content.course_title,
-      description: content.course_description
+      description: content.course_description,
+      verification_mode: content.verification_mode
     }).select().single();
 
     if (cErr) throw new Error(`Errore salvataggio corso: ${cErr.message}`);

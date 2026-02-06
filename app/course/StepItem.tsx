@@ -1,7 +1,6 @@
 import ResourcePreview from '@/components/ResourcePreview'
 import {
   colors,
-  layout,
   radius,
   spacing
 } from '@/lib/theme'
@@ -35,9 +34,10 @@ type StepItemProps = {
     title: string
     description: string | null
     completed: boolean
+    status?: 'pending' | 'completed' | 'skipped'
     resource: Resource | null
   }
-  onToggleCompleted: (id: string, value: boolean) => void
+  onUpdateStatus: (id: string, status: 'completed' | 'skipped' | 'pending') => void
   index: number
   daysPerStep: number
   courseCreatedAt: string
@@ -51,7 +51,7 @@ type StepItemProps = {
 
 export default function StepItem({
   step,
-  onToggleCompleted,
+  onUpdateStatus,
   index,
   daysPerStep,
   courseCreatedAt,
@@ -80,283 +80,128 @@ export default function StepItem({
     return formatDate(deadline)
   }
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+  const deadlineDate = getDeadline()
 
+  return (
+    <View style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          padding: layout.cardPadding,
-          paddingTop: spacing.lg,
-          paddingBottom: insets.bottom + 140,
+          paddingBottom: insets.bottom + 40,
         }}
+        showsVerticalScrollIndicator={false}
         bounces={false}
-        alwaysBounceVertical={false}
       >
-        {/* CARD PRINCIPALE CON IMMAGINE DI SFONDO */}
-        <Pressable
-          disabled={!hasResource}
-          onPress={() => {
-            if (step.resource?.url) {
-              const isYoutube = step.resource.url.includes('youtu');
-              if (isYoutube) {
-                setShowPreview(true);
-              } else {
-                Linking.openURL(step.resource.url);
-              }
-            }
-          }}
-          style={({ pressed }) => ({
-            width: '100%',
-            minHeight: 380,
-            backgroundColor: colors.card,
-            borderRadius: radius.lg,
-            overflow: 'hidden',
-            opacity: pressed ? 0.95 : 1,
-            transform: [{ scale: pressed ? 0.98 : 1 }],
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.3,
-            shadowRadius: 12,
-            elevation: 8
-          })}
-        >
-          {/* IMMAGINE DI SFONDO */}
-          {step.resource?.thumbnail_url ? (
-            <Image
-              source={{ uri: step.resource.thumbnail_url }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={{ fontSize: 60, opacity: 0.3 }}>📺</Text>
-            </View>
-          )}
+        <View style={styles.card}>
+          {/* TOP SECTION: Resource + Info */}
+          <View style={styles.topSection}>
+            <Pressable
+              disabled={!hasResource}
+              onPress={() => {
+                if (step.resource?.url) {
+                  const isYoutube = step.resource.url.includes('youtu');
+                  if (isYoutube) {
+                    setShowPreview(true);
+                  } else {
+                    Linking.openURL(step.resource.url);
+                  }
+                }
+              }}
+              style={styles.thumbnailContainer}
+            >
+              {step.resource?.thumbnail_url ? (
+                <Image
+                  source={{ uri: step.resource.thumbnail_url }}
+                  style={styles.thumbnail}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.thumbnailPlaceholder}>
+                  <Text style={{ fontSize: 32 }}>📺</Text>
+                </View>
+              )}
+              {hasResource && (
+                <View style={styles.playOverlay}>
+                  <Text style={{ color: '#fff', fontSize: 12 }}>▶</Text>
+                </View>
+              )}
+            </Pressable>
 
-          {/* GRADIENTE OVERLAY */}
-          <View style={[StyleSheet.absoluteFillObject, {
-            backgroundColor: 'rgba(0,0,0,0.5)'
-          }]} />
-
-          {/* CONTENUTO CARD */}
-          <View style={{ flex: 1, padding: spacing.lg, justifyContent: 'space-between' }}>
-
-            {/* BADGE IN ALTO */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{
-                backgroundColor: step.completed ? colors.successBg : 'rgba(255,255,255,0.2)',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 6,
-              }}>
-                <Text style={{
-                  color: step.completed ? colors.successText : '#fff',
-                  fontSize: 11,
-                  fontWeight: '700',
-                  letterSpacing: 0.5
-                }}>
-                  {step.completed ? '✓ COMPLETATO' : 'DA FARE'}
+            <View style={styles.headerInfo}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title} numberOfLines={2}>
+                  {step.title}
+                </Text>
+                <Text style={styles.stepCount}>
+                  x{index + 1}
                 </Text>
               </View>
 
-              {/* DEADLINE PER TUTTI GLI STEP NON COMPLETATI */}
-              {!step.completed && (() => {
-                const start = referenceDate ? new Date(referenceDate) : new Date()
-                const totalMs = daysPerStep * 24 * 60 * 60 * 1000
-
-                if (isCurrentStep) {
-                  const deadlineMs = start.getTime() + totalMs
-                  const now = new Date().getTime()
-                  const remaining = Math.max(0, Math.min(1, (deadlineMs - now) / totalMs))
-                  const percentage = (remaining * 100).toFixed(0) + '%'
-
-                  return (
-                    <View style={{
-                      marginLeft: 'auto',
-                      backgroundColor: 'rgba(255,255,255,0.1)',
-                      borderRadius: 6,
-                      height: 28,
-                      minWidth: 120,
-                      overflow: 'hidden',
-                      justifyContent: 'center',
-                      borderWidth: 1,
-                      borderColor: 'rgba(255,165,0,0.3)'
-                    }}>
-                      <View style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: `${percentage}` as any,
-                        backgroundColor: 'rgba(255,165,0,0.8)',
-                      }} />
-                      <Text style={{
-                        color: '#FFF',
-                        fontSize: 10,
-                        fontWeight: '800',
-                        textAlign: 'center',
-                        textShadowColor: 'rgba(0,0,0,0.4)',
-                        textShadowOffset: { width: 0, height: 1 },
-                        textShadowRadius: 2,
-                        paddingHorizontal: 8
-                      }}>
-                        SCADE IL {getDeadline().toUpperCase()}
-                      </Text>
-                    </View>
-                  )
-                } else {
-                  // Per gli step futuri, mostriamo solo un badge semplice con la data
-                  return (
-                    <View style={{
-                      marginLeft: 'auto',
-                      backgroundColor: 'rgba(255,255,255,0.15)',
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: 'rgba(255,255,255,0.1)'
-                    }}>
-                      <Text style={{
-                        color: 'rgba(255,255,255,0.9)',
-                        fontSize: 10,
-                        fontWeight: '700',
-                      }}>
-                        ENTRO IL {getDeadline().toUpperCase()}
-                      </Text>
-                    </View>
-                  )
-                }
-              })()}
-            </View>
-
-
-
-            {/* TITOLO E DESCRIZIONE */}
-            <View>
-              <Text style={{
-                fontSize: 28,
-                fontWeight: '800',
-                color: '#fff',
-                marginBottom: spacing.sm,
-                textShadowColor: 'rgba(0,0,0,0.5)',
-                textShadowOffset: { width: 0, height: 2 },
-                textShadowRadius: 4,
-                lineHeight: 34
-              }}>
-                {step.title}
+              <Text style={styles.statusText}>
+                {step.status === 'skipped'
+                  ? '⏭️ Saltato'
+                  : step.completed
+                    ? '✅ Completato'
+                    : '⏳ In sospeso'}
               </Text>
 
-              {step.description && (
-                <Text
-                  numberOfLines={10}
-                  style={{
-                    fontSize: 15,
-                    color: 'rgba(255,255,255,0.9)',
-                    lineHeight: 22,
-                    marginBottom: spacing.md,
-                    textShadowColor: 'rgba(0,0,0,0.3)',
-                    textShadowOffset: { width: 0, height: 1 },
-                    textShadowRadius: 2
-                  }}
-                >
-                  {step.description}
+              {!step.completed && (
+                <Text style={styles.pricePlaceholder}>
+                  Pronto per iniziare
                 </Text>
-              )}
-
-              {/* PULSANTE PRINCIPALE */}
-              {hasResource ? (
-                <View style={{
-                  backgroundColor: '#fff',
-                  paddingVertical: 14,
-                  paddingHorizontal: 24,
-                  borderRadius: radius.md,
-                  alignSelf: 'flex-start',
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 6,
-                  elevation: 4,
-                  marginTop: 'auto'
-                }}>
-                  <Text style={{
-                    color: '#000',
-                    fontWeight: '800',
-                    fontSize: 15,
-                    letterSpacing: 0.3
-                  }}>
-                    Guarda il Video
-                  </Text>
-                </View>
-              ) : (
-                <View style={{
-                  backgroundColor: 'rgba(255,255,255,0.15)',
-                  paddingVertical: 14,
-                  paddingHorizontal: 24,
-                  borderRadius: radius.md,
-                  alignSelf: 'flex-start',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.2)',
-                  marginTop: 'auto'
-                }}>
-                  <Text style={{
-                    color: 'rgba(255,255,255,0.6)',
-                    fontWeight: '700',
-                    fontSize: 14
-                  }}>
-                    Risorsa in caricamento...
-                  </Text>
-                </View>
               )}
             </View>
           </View>
-        </Pressable>
-      </ScrollView>
 
-      {/* FOOTER FISSO */}
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: layout.cardPadding,
-          paddingBottom: Math.max(insets.bottom, 20),
-          backgroundColor: colors.background,
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.1)',
-        }}
-      >
-        <Pressable
-          onPress={() =>
-            onToggleCompleted(step.id, !step.completed)
-          }
-          style={({ pressed }) => ({
-            backgroundColor: step.completed
-              ? colors.successBg
-              : colors.primaryButton,
-            paddingVertical: spacing.md,
-            borderRadius: radius.md,
-            opacity: pressed ? 0.9 : 1,
-            transform: [{ scale: pressed ? 0.98 : 1 }]
-          })}
-        >
-          <Text
-            style={{
-              textAlign: 'center',
-              fontSize: 16,
-              fontWeight: '700',
-              color: step.completed
-                ? colors.successText
-                : '#ffffff',
-            }}
-          >
-            {step.completed
-              ? '✓ Step Completato'
-              : 'Segna come completato'}
-          </Text>
-        </Pressable>
-      </View>
+          {/* DESCRIPTION */}
+          {step.description && (
+            <View style={styles.descriptionSection}>
+              <Text style={styles.description}>
+                {step.description}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.divider} />
+
+          {/* BOTTOM SECTION: Deadline + Actions */}
+          <View style={styles.bottomSection}>
+            <View style={styles.deadlineInfo}>
+              <Text style={styles.deadlineLabel}>Scadenza stimata</Text>
+              <Text style={styles.deadlineValue}>{deadlineDate}</Text>
+            </View>
+
+            <View style={styles.actionsRow}>
+              {!step.completed ? (
+                <>
+                  <Pressable
+                    onPress={() => onUpdateStatus(step.id, 'skipped')}
+                    style={styles.skipButton}
+                  >
+                    <Text style={styles.skipButtonIcon}>⏭️</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => onUpdateStatus(step.id, 'completed')}
+                    style={styles.completeButton}
+                  >
+                    <Text style={styles.completeButtonText}>Completa Step</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable
+                  onPress={() => onUpdateStatus(step.id, 'pending')}
+                  style={[styles.completeButton, { backgroundColor: colors.successBg, borderWidth: 0 }]}
+                >
+                  <Text style={[styles.completeButtonText, { color: colors.successText }]}>
+                    Ripristina
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
+      </ScrollView>
 
       <ResourcePreview
         visible={showPreview}
@@ -364,6 +209,149 @@ export default function StepItem({
         type="youtube"
         url={step.resource?.url || ''}
       />
-    </View >
+    </View>
   )
 }
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    // Shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    // Elevation for Android
+    elevation: 4,
+  },
+  topSection: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  thumbnailContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: radius.md,
+    backgroundColor: '#f5f5f5',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbnailPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playOverlay: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    flex: 1,
+  },
+  stepCount: {
+    fontSize: 14,
+    color: '#ccc',
+    marginLeft: 8,
+  },
+  statusText: {
+    fontSize: 13,
+    color: '#999',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  pricePlaceholder: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  descriptionSection: {
+    marginBottom: spacing.md,
+  },
+  description: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: spacing.md,
+  },
+  bottomSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deadlineInfo: {
+    flex: 1,
+  },
+  deadlineLabel: {
+    fontSize: 12,
+    color: '#bbb',
+    marginBottom: 2,
+  },
+  deadlineValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  completeButton: {
+    backgroundColor: '#000',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  completeButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  skipButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eee',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  skipButtonIcon: {
+    fontSize: 18,
+  },
+})

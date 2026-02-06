@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { colors, spacing, typography } from '@/lib/theme'
+import { spacing } from '@/lib/theme'
 import {
   useLocalSearchParams,
   useRouter,
@@ -13,6 +13,7 @@ import {
   View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import MilestoneItem from './MilestoneItem'
 import StepItem from './StepItem'
 
 const { width } = Dimensions.get('window')
@@ -32,11 +33,13 @@ type Step = {
   title: string
   description: string | null
   completed: boolean
+  status?: 'pending' | 'completed' | 'skipped'
   order_index: number
   phase_id: string
   course_id?: string
   resource: Resource | null
   created_at?: string
+  isMilestone?: boolean // Flag to distinguish milestone cards
 }
 
 type Phase = {
@@ -45,28 +48,27 @@ type Phase = {
   order_index: number
 }
 
+type Milestone = {
+  id: string
+  title: string
+  description: string
+  milestone_type: string
+  phase_id: string
+}
+
 /* ---------------- HELPERS ---------------- */
 
 function isPhaseCompleted(phaseId: string, steps: Step[]) {
-  const phaseSteps = steps.filter(
-    (s) => s.phase_id === phaseId
-  )
+  const phaseSteps = steps.filter((s) => s.phase_id === phaseId)
   if (phaseSteps.length === 0) return false
   return phaseSteps.every((s) => s.completed)
 }
 
-function getActivePhase(
-  phases: Phase[],
-  steps: Step[]
-): Phase | null {
+function getActivePhase(phases: Phase[], steps: Step[]): Phase | null {
   for (const phase of phases) {
-    const phaseSteps = steps.filter(
-      (s) => s.phase_id === phase.id
-    )
+    const phaseSteps = steps.filter((s) => s.phase_id === phase.id)
     if (phaseSteps.length === 0) continue
-    const hasIncomplete = phaseSteps.some(
-      (s) => !s.completed
-    )
+    const hasIncomplete = phaseSteps.some((s) => !s.completed)
     if (hasIncomplete) return phase
   }
   return null
@@ -84,13 +86,14 @@ export default function CourseScreen() {
   const [courseCreatedAt, setCourseCreatedAt] = useState<string>('')
   const [phases, setPhases] = useState<Phase[]>([])
   const [steps, setSteps] = useState<Step[]>([])
-  const [visibleSteps, setVisibleSteps] = useState<Step[]>([])
+  const [milestones, setMilestones] = useState<Milestone[]>([])
+  const [visibleItems, setVisibleItems] = useState<any[]>([])
   const [phasesMap, setPhasesMap] =
     useState<Record<string, string>>({})
 
   const [currentIndex, setCurrentIndex] = useState(0)
 
-  const flatListRef = useRef<FlatList<Step>>(null)
+  const flatListRef = useRef<FlatList<any>>(null)
   const initialized = useRef(false)
 
   /* ---------------- LOAD ---------------- */
@@ -103,7 +106,7 @@ export default function CourseScreen() {
 
   useEffect(() => {
     if (phases.length) {
-      loadSteps()
+      loadStepsAndMilestones()
     }
   }, [phases])
 
@@ -139,14 +142,16 @@ export default function CourseScreen() {
     setPhasesMap(map)
   }
 
-  async function loadSteps() {
-    const { data, error } = await supabase
+  async function loadStepsAndMilestones() {
+    // 1. Load Steps
+    const { data: stepsData, error: sErr } = await supabase
       .from('steps')
       .select(`
         id,
         title,
         description,
         completed,
+        status,
         order_index,
         created_at,
         phase_id,
@@ -162,49 +167,45 @@ export default function CourseScreen() {
       `)
       .eq('course_id', courseId)
 
-    if (error || !data) {
-      console.error('loadSteps error', error)
+    if (sErr || !stepsData) {
+      console.error('loadSteps error', sErr)
       return
     }
 
-    // 🔥 NORMALIZZA: resources[] → resource
-    const normalized: Step[] = data.map((step: any) => ({
-      id: step.id,
-      title: step.title,
-      description: step.description,
-      completed: step.completed,
-      order_index: step.order_index,
-      phase_id: step.phase_id,
-      course_id: step.course_id,
+    // 2. Load Milestones
+    const { data: mData } = await supabase
+      .from('milestones')
+      .select('*')
+      .in('phase_id', phases.map(p => p.id))
+
+    const normalizedMilestones = mData || []
+    setMilestones(normalizedMilestones)
+
+    // 3. Normalize Steps
+    const normalizedSteps: Step[] = stepsData.map((step: any) => ({
+      ...step,
+      status: step.status || 'pending',
+      completed: step.status ? (step.status === 'completed' || step.status === 'skipped') : step.completed,
       resource: step.resource || null,
-      created_at: step.created_at,
     }))
 
-    const sorted = normalized.sort((a, b) => {
+    const sortedSteps = normalizedSteps.sort((a, b) => {
       const phaseA = phases.find(p => p.id === a.phase_id)
       const phaseB = phases.find(p => p.id === b.phase_id)
-
       if (!phaseA || !phaseB) return 0
-
-      if (phaseA.order_index !== phaseB.order_index) {
-        return phaseA.order_index - phaseB.order_index
-      }
-
+      if (phaseA.order_index !== phaseB.order_index) return phaseA.order_index - phaseB.order_index
       return a.order_index - b.order_index
     })
 
-    setSteps(sorted)
-    recomputeVisibleSteps(sorted)
+    setSteps(sortedSteps)
+    recomputeVisibleContent(sortedSteps, normalizedMilestones)
   }
 
-  /* ---------------- CORE LOGIC ---------------- */
-
-  function recomputeVisibleSteps(allSteps: Step[]) {
-    // 1. Trova la prima fase incompleta
+  function recomputeVisibleContent(allSteps: Step[], allMilestones: Milestone[]) {
+    // Determine which phases are visible
     const firstIncompletePhase = getActivePhase(phases, allSteps)
     const firstIncompleteOrder = firstIncompletePhase ? firstIncompletePhase.order_index : -1
 
-    // 2. Trova la fase più avanzata che ha almeno uno step completato
     let maxCompletedStepOrder = -1
     allSteps.forEach(step => {
       if (step.completed) {
@@ -215,85 +216,61 @@ export default function CourseScreen() {
       }
     })
 
-    // 3. La visibilità è il massimo tra le due
-    // Se non ci sono fasi incomplete (corso finito), mostriamo tutto
     let maxVisibleOrder = Math.max(firstIncompleteOrder, maxCompletedStepOrder)
     if (firstIncompleteOrder === -1) {
       maxVisibleOrder = Math.max(...phases.map(p => p.order_index))
     }
 
-    const visiblePhaseIds = phases
-      .filter(p => p.order_index <= maxVisibleOrder)
-      .map(p => p.id)
+    const visiblePhases = phases.filter(p => p.order_index <= maxVisibleOrder)
 
-    const visible = allSteps.filter((s) =>
-      visiblePhaseIds.includes(s.phase_id)
-    )
+    // Interleave steps and milestones
+    const content: any[] = []
+    visiblePhases.forEach(p => {
+      const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
+      content.push(...phaseSteps)
 
-    setVisibleSteps(visible)
+      const milestone = allMilestones.find(m => m.phase_id === p.id)
+      if (milestone) {
+        content.push({ ...milestone, isMilestone: true })
+      }
+    })
 
-    if (initialized.current) return
+    setVisibleItems(content)
 
-    const firstIncompleteIndex =
-      visible.findIndex((s) => !s.completed)
-
-    if (firstIncompleteIndex >= 0) {
-      requestAnimationFrame(() => {
-        flatListRef.current?.scrollToIndex({
-          index: firstIncompleteIndex,
-          animated: false,
+    if (!initialized.current) {
+      const firstIncompleteIndex = content.findIndex((item) => !item.completed && !item.isMilestone)
+      if (firstIncompleteIndex >= 0) {
+        requestAnimationFrame(() => {
+          flatListRef.current?.scrollToIndex({ index: firstIncompleteIndex, animated: false })
         })
-      })
+      }
+      initialized.current = true
     }
-
-    initialized.current = true
   }
 
-  async function toggleCompleted(
+  async function updateStepStatus(
     stepId: string,
-    value: boolean
+    newStatus: 'completed' | 'skipped' | 'pending'
   ) {
-    await supabase
-      .from('steps')
-      .update({ completed: value })
-      .eq('id', stepId)
+    const isCompletedBool = (newStatus === 'completed' || newStatus === 'skipped')
+    await supabase.from('steps').update({ status: newStatus, completed: isCompletedBool }).eq('id', stepId)
 
     setSteps((prev) => {
-      const updated = prev.map((s) =>
-        s.id === stepId
-          ? { ...s, completed: value }
-          : s
-      )
+      const updated = prev.map((s) => s.id === stepId ? { ...s, status: newStatus, completed: isCompletedBool } : s)
+      recomputeVisibleContent(updated, milestones)
 
-      recomputeVisibleSteps(updated)
-      setCurrentIndex(0)
-
-      const updatedStep = updated.find(
-        (s) => s.id === stepId
-      )
-
-      if (updatedStep && value) {
-        const completed = isPhaseCompleted(
-          updatedStep.phase_id,
-          updated
-        )
-
-        if (completed) {
-          router.push({
-            pathname: '/course/phase-completed',
-            params: {
-              phaseId: updatedStep.phase_id,
-              courseId,
-            },
-          })
-        }
+      const updatedStep = updated.find(s => s.id === stepId)
+      if (updatedStep && isCompletedBool && isPhaseCompleted(updatedStep.phase_id, updated)) {
+        router.push({
+          pathname: '/course/phase-completed',
+          params: { phaseId: updatedStep.phase_id, courseId },
+        })
       }
-
       return updated
     })
   }
 
-  /* ---------------- REFERENCE DATE FOR DEADLINES ---------------- */
+  /* ---------------- REFERENCE DATE ---------------- */
   const lastCompletedStep = [...steps]
     .filter(s => s.completed && s.created_at)
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())[0]
@@ -301,105 +278,66 @@ export default function CourseScreen() {
   const referenceDate = lastCompletedStep?.created_at || courseCreatedAt
 
   /* ---------------- HEADER INFO ---------------- */
-  const currentStep = visibleSteps[currentIndex]
-  const currentPhaseTitle = currentStep
-    ? phasesMap[currentStep.phase_id]
-    : null
+  const currentItem = visibleItems[currentIndex]
+  const currentPhaseTitle = currentItem ? phasesMap[currentItem.phase_id] : null
 
   const insets = useSafeAreaInsets()
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.background,
-      }}
-    >
-      {/* HEADER CON BACK BUTTON */}
-      <View
-        style={{
-          paddingTop: insets.top + spacing.sm,
-          paddingHorizontal: spacing.lg,
-          paddingBottom: spacing.xs,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {/* Back Button */}
-          <Pressable
-            onPress={() => router.replace('/')}
-            style={({ pressed }) => ({
-              opacity: pressed ? 0.6 : 1,
-              zIndex: 10,
-            })}
-          >
-            <Text style={typography.backButton}>←</Text>
+    <View style={{ flex: 1, backgroundColor: '#f2f2f2' }}>
+      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Pressable onPress={() => router.replace('/')} style={{ width: 40, height: 40, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 24, fontWeight: '300' }}>←</Text>
           </Pressable>
 
-          {/* Titles Container (Centered relative to the row) */}
-          <View style={{ flex: 1, marginLeft: -30 }}>
-            <Text style={[typography.courseTitle, { textAlign: 'center' }]}>
-              {courseTitle}
-            </Text>
-            {currentPhaseTitle && (
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: '600',
-                  color: colors.mutedText,
-                  textAlign: 'center',
-                }}
-              >
-                {currentPhaseTitle}
-              </Text>
-            )}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center', color: '#000' }}>{courseTitle}</Text>
+            {currentPhaseTitle && <Text style={{ fontSize: 12, fontWeight: '500', color: '#999', textAlign: 'center' }}>{currentPhaseTitle}</Text>}
           </View>
+          <View style={{ width: 40 }} />
         </View>
       </View>
 
       <FlatList
         ref={flatListRef}
-        data={visibleSteps}
+        data={visibleItems}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         bounces={false}
         keyExtractor={(item) => item.id}
         onMomentumScrollEnd={(e) => {
-          const index = Math.round(
-            e.nativeEvent.contentOffset.x / width
-          )
-          setCurrentIndex(index)
+          setCurrentIndex(Math.round(e.nativeEvent.contentOffset.x / width))
         }}
-        getItemLayout={(data, index) => ({
-          length: width,
-          offset: width * index,
-          index,
-        })}
-        onScrollToIndexFailed={(info) => {
-          const wait = new Promise((resolve) => setTimeout(resolve, 500))
-          wait.then(() => {
-            flatListRef.current?.scrollToIndex({
-              index: info.index,
-              animated: false,
-            })
-          })
-        }}
+        getItemLayout={(data, index) => ({ length: width, offset: width * index, index })}
         renderItem={({ item }) => (
-          <View
-            style={{
-              width,
-              padding: spacing.lg,
-            }}
-          >
-            <StepItem
-              step={item}
-              onToggleCompleted={toggleCompleted}
-              index={steps.findIndex(s => s.id === item.id)} // Use global index
-              daysPerStep={daysPerStep}
-              courseCreatedAt={courseCreatedAt}
-              firstIncompleteIndex={steps.findIndex(s => !s.completed)} // Use global index
-              referenceDate={referenceDate}
-            />
+          <View style={{ width, padding: spacing.lg }}>
+            {item.isMilestone ? (
+              (() => {
+                const currentPhase = phases.find(ph => ph.id === item.phase_id)
+                const nextPhase = phases.find(p => p.order_index === (currentPhase?.order_index || 0) + 1)
+                return (
+                  <MilestoneItem
+                    milestone={item}
+                    courseId={courseId}
+                    nextPhaseId={nextPhase?.id}
+                    nextPhaseTitle={nextPhase?.title}
+                    onRefresh={loadStepsAndMilestones}
+                  />
+                )
+              })()
+            ) : (
+              <StepItem
+                step={item}
+                onUpdateStatus={updateStepStatus}
+                index={steps.findIndex(s => s.id === item.id)}
+                daysPerStep={daysPerStep}
+                courseCreatedAt={courseCreatedAt}
+                firstIncompleteIndex={steps.findIndex(s => !s.completed)}
+                referenceDate={referenceDate}
+              />
+            )}
           </View>
         )}
         contentContainerStyle={{ paddingBottom: 100 }}

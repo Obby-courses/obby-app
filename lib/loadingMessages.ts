@@ -2,6 +2,8 @@ export type LoadingStatus =
   | 'CREATING_COURSE'
   | 'GENERATING_PHASES'
   | 'GENERATING_STEPS'
+  | 'GENERATING_MILESTONE'
+  | 'SUCCESS_PHASE'
 
 type LoadingMessage = {
   emoji: string
@@ -24,5 +26,15 @@ export const loadingMessages: Record<LoadingStatus, LoadingMessage> = {
     emoji: '✏️',
     title: 'Creazione Step',
     subtitle: 'Stiamo generando gli step operativi',
+  },
+  GENERATING_MILESTONE: {
+    emoji: '🏆',
+    title: 'Sfida Finale',
+    subtitle: 'Stiamo preparando la tua prova di competenza',
+  },
+  SUCCESS_PHASE: {
+    emoji: '⭐',
+    title: 'Fase Completata!',
+    subtitle: 'Ottimo lavoro, hai sbloccato un nuovo traguardo',
   },
 }
