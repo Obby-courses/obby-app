@@ -27,7 +27,8 @@ export default function ResourcePreview({ type, url, onClose, visible }: Resourc
                     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
                 }
             } catch (err) {
-                console.warn("Errore rotazione:", err)
+                // Silently fail if rotation lock is not supported on the device
+                // This happens frequently on certain Android devices or web
             }
         }
 

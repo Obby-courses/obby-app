@@ -62,7 +62,32 @@ export default function StepItem({
   const [showPreview, setShowPreview] = useState(false)
 
   const hasResource = !!step.resource
+
+  const isYoutubeResource = (res: Resource | null) => {
+    if (!res) return false;
+    return res.type === 'youtube' || res.url.includes('youtube.com') || res.url.includes('youtu.be');
+  }
+
   const isCurrentStep = index === firstIncompleteIndex
+
+  // Color Interpolation (Green -> Yellow -> Red)
+  const getProgressColor = (p: number) => {
+    if (p > 0.5) {
+      // green to yellow
+      const ratio = (p - 0.5) * 2;
+      const r = Math.round(250 * (1 - ratio) + 74 * ratio);
+      const g = Math.round(204 * (1 - ratio) + 222 * ratio);
+      const b = Math.round(21 * (1 - ratio) + 128 * ratio);
+      return `rgb(${r},${g},${b})`;
+    } else {
+      // yellow to red
+      const ratio = p * 2;
+      const r = Math.round(248 * (1 - ratio) + 250 * ratio);
+      const g = Math.round(113 * (1 - ratio) + 204 * ratio);
+      const b = Math.round(113 * (1 - ratio) + 21 * ratio);
+      return `rgb(${r},${g},${b})`;
+    }
+  };
 
   // Funzione per formattare la data in Italiano
   const formatDate = (date: Date) => {
@@ -72,15 +97,23 @@ export default function StepItem({
     }).format(date)
   }
 
-  // Calcolo deadline dello step
-  const getDeadline = () => {
-    const start = referenceDate ? new Date(referenceDate) : new Date()
-    const relativeIndex = index >= firstIncompleteIndex ? index - firstIncompleteIndex : 0
-    const deadline = new Date(start.getTime() + (relativeIndex + 1) * daysPerStep * 24 * 60 * 60 * 1000)
-    return formatDate(deadline)
+  // Calcoli progresso e deadline
+  const start = referenceDate ? new Date(referenceDate) : new Date(courseCreatedAt)
+  const relativeIndex = index >= firstIncompleteIndex ? index - firstIncompleteIndex : 0
+  const totalDurationMs = (relativeIndex + 1) * daysPerStep * 24 * 60 * 60 * 1000
+  const deadlineDateObj = new Date(start.getTime() + totalDurationMs)
+
+  const deadlineDate = formatDate(deadlineDateObj)
+
+  let remainingProgress = 1
+  if (isCurrentStep && !step.completed) {
+    const stepDurationMs = daysPerStep * 24 * 60 * 60 * 1000
+    const stepDeadlineMs = start.getTime() + stepDurationMs
+    const now = Date.now()
+    remainingProgress = Math.max(0, Math.min(1, (stepDeadlineMs - now) / stepDurationMs))
   }
 
-  const deadlineDate = getDeadline()
+  const progressColor = getProgressColor(remainingProgress)
 
   return (
     <View style={{ flex: 1 }}>
@@ -95,37 +128,27 @@ export default function StepItem({
         <View style={styles.card}>
           {/* TOP SECTION: Resource + Info */}
           <View style={styles.topSection}>
-            <Pressable
-              disabled={!hasResource}
-              onPress={() => {
-                if (step.resource?.url) {
-                  const isYoutube = step.resource.url.includes('youtu');
-                  if (isYoutube) {
-                    setShowPreview(true);
-                  } else {
-                    Linking.openURL(step.resource.url);
-                  }
-                }
-              }}
-              style={styles.thumbnailContainer}
-            >
-              {step.resource?.thumbnail_url ? (
-                <Image
-                  source={{ uri: step.resource.thumbnail_url }}
-                  style={styles.thumbnail}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.thumbnailPlaceholder}>
-                  <Text style={{ fontSize: 32 }}>📺</Text>
-                </View>
-              )}
-              {hasResource && (
+            {hasResource && isYoutubeResource(step.resource) && (
+              <Pressable
+                onPress={() => setShowPreview(true)}
+                style={styles.thumbnailContainer}
+              >
+                {step.resource?.thumbnail_url ? (
+                  <Image
+                    source={{ uri: step.resource.thumbnail_url }}
+                    style={styles.thumbnail}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.thumbnailPlaceholder}>
+                    <Text style={{ fontSize: 32 }}>📺</Text>
+                  </View>
+                )}
                 <View style={styles.playOverlay}>
                   <Text style={{ color: '#fff', fontSize: 12 }}>▶</Text>
                 </View>
-              )}
-            </Pressable>
+              </Pressable>
+            )}
 
             <View style={styles.headerInfo}>
               <View style={styles.titleRow}>
@@ -133,7 +156,7 @@ export default function StepItem({
                   {step.title}
                 </Text>
                 <Text style={styles.stepCount}>
-                  x{index + 1}
+                  #{index + 1}
                 </Text>
               </View>
 
@@ -142,14 +165,40 @@ export default function StepItem({
                   ? '⏭️ Saltato'
                   : step.completed
                     ? '✅ Completato'
-                    : '⏳ In sospeso'}
+                    : '⏳ Da completare'}
               </Text>
 
-              {!step.completed && (
-                <Text style={styles.pricePlaceholder}>
-                  Pronto per iniziare
-                </Text>
-              )}
+              {hasResource && step.resource && (() => {
+                const res = step.resource;
+                const isYT = isYoutubeResource(res);
+                return (
+                  <Pressable
+                    onPress={async () => {
+                      if (isYT) {
+                        setShowPreview(true);
+                      } else {
+                        try {
+                          const supported = await Linking.canOpenURL(res.url);
+                          if (supported) {
+                            await Linking.openURL(res.url);
+                          } else {
+                            // Fallback for non-supported URLs
+                            console.warn("Unable to open URL:", res.url);
+                          }
+                        } catch (e) { console.error(e); }
+                      }
+                    }}
+                    style={[
+                      styles.resourceAction,
+                      { backgroundColor: isYT ? '#FF0000' : colors.accent }
+                    ]}
+                  >
+                    <Text style={styles.resourceActionText}>
+                      {isYT ? '📺 Guarda Video' : '🔗 Leggi Articolo'}
+                    </Text>
+                  </Pressable>
+                );
+              })()}
             </View>
           </View>
 
@@ -168,7 +217,22 @@ export default function StepItem({
           <View style={styles.bottomSection}>
             <View style={styles.deadlineInfo}>
               <Text style={styles.deadlineLabel}>Scadenza stimata</Text>
-              <Text style={styles.deadlineValue}>{deadlineDate}</Text>
+              <Text style={[
+                styles.deadlineValue,
+                isCurrentStep && !step.completed && { color: progressColor }
+              ]}>
+                {deadlineDate}
+              </Text>
+              {isCurrentStep && !step.completed && (
+                <View style={styles.progressBarBg}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      { width: `${remainingProgress * 100}%`, backgroundColor: progressColor }
+                    ]}
+                  />
+                </View>
+              )}
             </View>
 
             <View style={styles.actionsRow}>
@@ -272,25 +336,33 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800', // Made even bolder
     color: '#000',
     flex: 1,
   },
   stepCount: {
     fontSize: 14,
-    color: '#ccc',
+    color: '#bbb',
     marginLeft: 8,
+    fontVariant: ['tabular-nums'],
   },
   statusText: {
     fontSize: 13,
     color: '#999',
     marginTop: 2,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  pricePlaceholder: {
-    fontSize: 18,
+  resourceAction: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  resourceActionText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '700',
-    color: '#000',
   },
   descriptionSection: {
     marginBottom: spacing.md,
@@ -353,5 +425,16 @@ const styles = StyleSheet.create({
   },
   skipButtonIcon: {
     fontSize: 18,
+  },
+  progressBarBg: {
+    height: 4,
+    backgroundColor: '#eee',
+    borderRadius: 2,
+    marginTop: 6,
+    width: '80%',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
   },
 })

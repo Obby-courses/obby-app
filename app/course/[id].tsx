@@ -6,17 +6,21 @@ import {
 } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
+  Alert,
   Dimensions,
   FlatList,
+  Modal,
   Pressable,
   Text,
-  View
+  View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import MilestoneItem from './MilestoneItem'
+import MilestoneNode from './MilestoneNode'
 import StepItem from './StepItem'
+import StepNode from './StepNode'
 
-const { width } = Dimensions.get('window')
+const { width, height } = Dimensions.get('window')
 
 /* ---------------- TYPES ---------------- */
 
@@ -39,13 +43,15 @@ type Step = {
   course_id?: string
   resource: Resource | null
   created_at?: string
-  isMilestone?: boolean // Flag to distinguish milestone cards
+  isMilestone?: boolean
+  global_index: number
 }
 
 type Phase = {
   id: string
   title: string
   order_index: number
+  macro_phase_id: string
 }
 
 type Milestone = {
@@ -61,17 +67,7 @@ type Milestone = {
 function isPhaseCompleted(phaseId: string, steps: Step[]) {
   const phaseSteps = steps.filter((s) => s.phase_id === phaseId)
   if (phaseSteps.length === 0) return false
-  return phaseSteps.every((s) => s.completed)
-}
-
-function getActivePhase(phases: Phase[], steps: Step[]): Phase | null {
-  for (const phase of phases) {
-    const phaseSteps = steps.filter((s) => s.phase_id === phase.id)
-    if (phaseSteps.length === 0) continue
-    const hasIncomplete = phaseSteps.some((s) => !s.completed)
-    if (hasIncomplete) return phase
-  }
-  return null
+  return phaseSteps.every((s) => s.completed || s.status === 'skipped')
 }
 
 /* ---------------- SCREEN ---------------- */
@@ -80,6 +76,7 @@ export default function CourseScreen() {
   const { id: courseId } =
     useLocalSearchParams<{ id: string }>()
   const router = useRouter()
+  const insets = useSafeAreaInsets()
 
   const [courseTitle, setCourseTitle] = useState('')
   const [daysPerStep, setDaysPerStep] = useState<number>(2.33)
@@ -87,14 +84,15 @@ export default function CourseScreen() {
   const [phases, setPhases] = useState<Phase[]>([])
   const [steps, setSteps] = useState<Step[]>([])
   const [milestones, setMilestones] = useState<Milestone[]>([])
-  const [visibleItems, setVisibleItems] = useState<any[]>([])
-  const [phasesMap, setPhasesMap] =
-    useState<Record<string, string>>({})
 
-  const [currentIndex, setCurrentIndex] = useState(0)
+  // Flattened list of ALL items to render in the map
+  const [mapItems, setMapItems] = useState<any[]>([])
 
-  const flatListRef = useRef<FlatList<any>>(null)
+  const [selectedStep, setSelectedStep] = useState<Step | null>(null)
+  const [selectedMilestone, setSelectedMilestone] = useState<any | null>(null)
+
   const initialized = useRef(false)
+  const flatListRef = useRef<FlatList<any>>(null)
 
   /* ---------------- LOAD ---------------- */
 
@@ -109,6 +107,29 @@ export default function CourseScreen() {
       loadStepsAndMilestones()
     }
   }, [phases])
+
+  useEffect(() => {
+    if (mapItems.length > 0 && !initialized.current) {
+      // Find index of first incomplete step
+      const firstIncompleteIdx = mapItems.findIndex(item => {
+        if (item.isMilestone) {
+          return !isPhaseCompleted(item.phase_id, steps)
+        }
+        return !item.completed
+      })
+
+      if (firstIncompleteIdx !== -1) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: firstIncompleteIdx,
+            animated: false,
+            viewPosition: 0.33 // 1/3 from the bottom
+          })
+        }, 100)
+      }
+      initialized.current = true
+    }
+  }, [mapItems])
 
   async function loadCourse() {
     const { data } = await supabase
@@ -127,19 +148,12 @@ export default function CourseScreen() {
   async function loadPhases() {
     const { data } = await supabase
       .from('phases')
-      .select('id, title, order_index')
+      .select('id, title, order_index, macro_phase_id')
       .eq('course_id', courseId)
       .order('order_index')
 
     if (!data) return
-
     setPhases(data)
-
-    const map: Record<string, string> = {}
-    data.forEach((p) => {
-      map[p.id] = p.title
-    })
-    setPhasesMap(map)
   }
 
   async function loadStepsAndMilestones() {
@@ -187,87 +201,133 @@ export default function CourseScreen() {
       status: step.status || 'pending',
       completed: step.status ? (step.status === 'completed' || step.status === 'skipped') : step.completed,
       resource: step.resource || null,
+      global_index: 0,
     }))
 
+    // Sort steps globally by Phase Order then Step Order
     const sortedSteps = normalizedSteps.sort((a, b) => {
       const phaseA = phases.find(p => p.id === a.phase_id)
       const phaseB = phases.find(p => p.id === b.phase_id)
       if (!phaseA || !phaseB) return 0
       if (phaseA.order_index !== phaseB.order_index) return phaseA.order_index - phaseB.order_index
       return a.order_index - b.order_index
-    })
+    }).map((step, idx) => ({ ...step, global_index: idx + 1 }))
 
     setSteps(sortedSteps)
-    recomputeVisibleContent(sortedSteps, normalizedMilestones)
+    recomputeMapContent(sortedSteps, normalizedMilestones)
   }
 
-  function recomputeVisibleContent(allSteps: Step[], allMilestones: Milestone[]) {
-    // Determine which phases are visible
-    const firstIncompletePhase = getActivePhase(phases, allSteps)
-    const firstIncompleteOrder = firstIncompletePhase ? firstIncompletePhase.order_index : -1
-
-    let maxCompletedStepOrder = -1
-    allSteps.forEach(step => {
-      if (step.completed) {
-        const phase = phases.find(p => p.id === step.phase_id)
-        if (phase && phase.order_index > maxCompletedStepOrder) {
-          maxCompletedStepOrder = phase.order_index
-        }
-      }
-    })
-
-    let maxVisibleOrder = Math.max(firstIncompleteOrder, maxCompletedStepOrder)
-    if (firstIncompleteOrder === -1) {
-      maxVisibleOrder = Math.max(...phases.map(p => p.order_index))
-    }
-
-    const visiblePhases = phases.filter(p => p.order_index <= maxVisibleOrder)
-
-    // Interleave steps and milestones
+  function recomputeMapContent(allSteps: Step[], allMilestones: Milestone[]) {
     const content: any[] = []
+
+    const firstIncompletePhase = getActivePhase(phases, allSteps)
+
+    // Find current macro_phase_id
+    const currentMacroPhaseId = firstIncompletePhase?.macro_phase_id || phases[phases.length - 1]?.macro_phase_id
+
+    // Phases to show: any phase with steps OR any phase belonging to the current/past macro-phases
+    // Actually, simple rule: show all phases up to the LAST phase of the current macro-phase.
+
+    // Find phases belonging to current macro-phase
+    const macroPhasePhases = phases.filter(p => p.macro_phase_id === currentMacroPhaseId)
+    const maxMacroOrder = Math.max(...macroPhasePhases.map(p => p.order_index))
+
+    const visiblePhases = phases.filter(p => p.order_index <= maxMacroOrder)
+
     visiblePhases.forEach(p => {
       const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
-      content.push(...phaseSteps)
+
+      if (phaseSteps.length > 0) {
+        // Populated phase
+        phaseSteps.sort((a, b) => a.order_index - b.order_index)
+        content.push(...phaseSteps)
+      } else {
+        // Future/Virtual phase - Show placeholders
+        // Use phase ID as seed for consistent randomization
+        const seed = p.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+        const numPlaceholders = 3 + (seed % 3) // Random 3, 4, or 5
+
+        for (let i = 0; i < numPlaceholders; i++) {
+          content.push({
+            id: `placeholder-${p.id}-${i}`,
+            phase_id: p.id,
+            isPlaceholder: true,
+            isMilestone: false,
+          })
+        }
+      }
 
       const milestone = allMilestones.find(m => m.phase_id === p.id)
       if (milestone) {
-        content.push({ ...milestone, isMilestone: true })
+        content.push({ ...milestone, isMilestone: true, phase_id: p.id })
+      } else {
+        // Virtual milestone placeholder
+        content.push({
+          id: `virtual-${p.id}`,
+          title: p.title,
+          description: 'Sfida finale per completare questa fase.',
+          isMilestone: true,
+          phase_id: p.id,
+          isVirtual: true,
+          milestone_type: 'test_finale'
+        })
       }
     })
 
-    setVisibleItems(content)
-
-    if (!initialized.current) {
-      const firstIncompleteIndex = content.findIndex((item) => !item.completed && !item.isMilestone)
-      if (firstIncompleteIndex >= 0) {
-        requestAnimationFrame(() => {
-          flatListRef.current?.scrollToIndex({ index: firstIncompleteIndex, animated: false })
-        })
-      }
-      initialized.current = true
-    }
+    setMapItems(content)
   }
+
+  function getActivePhase(phases: Phase[], steps: Step[]): Phase | null {
+    for (const phase of phases) {
+      const phaseSteps = steps.filter((s) => s.phase_id === phase.id)
+      if (phaseSteps.length === 0) continue
+      const hasIncomplete = phaseSteps.some((s) => !s.completed && s.status !== 'skipped')
+      if (hasIncomplete) return phase
+    }
+    return null
+  }
+
 
   async function updateStepStatus(
     stepId: string,
     newStatus: 'completed' | 'skipped' | 'pending'
   ) {
     const isCompletedBool = (newStatus === 'completed' || newStatus === 'skipped')
-    await supabase.from('steps').update({ status: newStatus, completed: isCompletedBool }).eq('id', stepId)
 
+    // 1. Optimistic Local Update
     setSteps((prev) => {
       const updated = prev.map((s) => s.id === stepId ? { ...s, status: newStatus, completed: isCompletedBool } : s)
-      recomputeVisibleContent(updated, milestones)
-
-      const updatedStep = updated.find(s => s.id === stepId)
-      if (updatedStep && isCompletedBool && isPhaseCompleted(updatedStep.phase_id, updated)) {
-        router.push({
-          pathname: '/course/phase-completed',
-          params: { phaseId: updatedStep.phase_id, courseId },
-        })
-      }
+      recomputeMapContent(updated, milestones)
       return updated
     })
+
+    // Update selected step if it's open (UI in the modal)
+    if (selectedStep && selectedStep.id === stepId) {
+      setSelectedStep(prev => prev ? { ...prev, status: newStatus, completed: isCompletedBool } : null)
+    }
+
+    // 2. Persistent Update
+    try {
+      const databaseStatus = newStatus === 'pending' ? null : newStatus;
+
+      const { error } = await supabase
+        .from('steps')
+        .update({
+          status: databaseStatus,
+          completed: isCompletedBool
+        })
+        .eq('id', stepId)
+
+      if (error) {
+        console.error('❌ Database update failed:', error)
+        throw error
+      }
+    } catch (err) {
+      console.error('❌ Error updating step status:', err)
+      // Rollback or refresh on error
+      loadStepsAndMilestones()
+      Alert.alert('Errore', 'Non è stato possibile salvare lo stato dello step.')
+    }
   }
 
   /* ---------------- REFERENCE DATE ---------------- */
@@ -277,61 +337,136 @@ export default function CourseScreen() {
 
   const referenceDate = lastCompletedStep?.created_at || courseCreatedAt
 
-  /* ---------------- HEADER INFO ---------------- */
-  const currentItem = visibleItems[currentIndex]
-  const currentPhaseTitle = currentItem ? phasesMap[currentItem.phase_id] : null
+  /* ---------------- RENDER ---------------- */
 
-  const insets = useSafeAreaInsets()
+  const renderItem = ({ item, index }: { item: any, index: number }) => {
+    // Determine Zigzag alignment
+    const offsetMap = [0, -45, 0, 45]
+    const alignment = item.isMilestone ? 0 : offsetMap[index % 4]
+
+    if (item.isMilestone) {
+      // Milestone is strictly locked if phase not done
+      const isPhaseDone = isPhaseCompleted(item.phase_id, steps)
+      const isLocked = !isPhaseDone
+
+      return (
+        <MilestoneNode
+          milestone={item}
+          isLocked={isLocked}
+          onPress={() => {
+            if (isLocked) {
+              Alert.alert('Step non completati', 'Completa tutti gli step precedenti per sbloccare la Milestone!')
+            } else {
+              setSelectedMilestone(item)
+            }
+          }}
+        />
+      )
+    }
+
+    // It's a Step or Placeholder
+    const isPlaceholder = !!item.isPlaceholder
+    const step = item as Step
+
+    // Determine Locked Status
+    let isLocked = true
+    if (index === 0) {
+      isLocked = false
+    } else {
+      const prevItem = mapItems[index - 1]
+      if (prevItem.isMilestone) {
+        isLocked = false
+      } else {
+        isLocked = !prevItem.completed && !prevItem.isPlaceholder
+      }
+    }
+
+    if (step.completed) isLocked = false
+    const isCurrent = !isLocked && !step.completed && !isPlaceholder
+
+    let remainingProgress = 1
+    if (isCurrent) {
+      const start = referenceDate ? new Date(referenceDate) : new Date(courseCreatedAt)
+      const totalDurationMs = daysPerStep * 24 * 60 * 60 * 1000
+      const deadlineMs = start.getTime() + totalDurationMs
+      const now = Date.now()
+      remainingProgress = Math.max(0, Math.min(1, (deadlineMs - now) / totalDurationMs))
+    }
+    return (
+      <View style={{ alignItems: 'center', transform: [{ translateX: alignment }] }}>
+        <StepNode
+          step={step}
+          index={index}
+          isLocked={isLocked || isPlaceholder}
+          isCurrent={isCurrent}
+          isPlaceholder={isPlaceholder}
+          remainingProgress={remainingProgress}
+          onPress={() => {
+            if (!isLocked && !isPlaceholder) setSelectedStep(step)
+          }}
+        />
+      </View>
+    )
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f2f2f2' }}>
-      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10, backgroundColor: '#f2f2f2' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Pressable onPress={() => router.replace('/')} style={{ width: 40, height: 40, justifyContent: 'center' }}>
             <Text style={{ fontSize: 24, fontWeight: '300' }}>←</Text>
           </Pressable>
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center', color: '#000' }}>{courseTitle}</Text>
-            {currentPhaseTitle && <Text style={{ fontSize: 12, fontWeight: '500', color: '#999', textAlign: 'center' }}>{currentPhaseTitle}</Text>}
-          </View>
+          <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center', color: '#000' }}>{courseTitle}</Text>
           <View style={{ width: 40 }} />
         </View>
       </View>
 
       <FlatList
         ref={flatListRef}
-        data={visibleItems}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        keyExtractor={(item) => item.id}
-        onMomentumScrollEnd={(e) => {
-          setCurrentIndex(Math.round(e.nativeEvent.contentOffset.x / width))
+        data={mapItems}
+
+        inverted
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: 20, // Space at the top when reached (inverted)
+          paddingTop: 40     // Space at the bottom before/after header
         }}
-        getItemLayout={(data, index) => ({ length: width, offset: width * index, index })}
-        renderItem={({ item }) => (
-          <View style={{ width, padding: spacing.lg }}>
-            {item.isMilestone ? (
-              (() => {
-                const currentPhase = phases.find(ph => ph.id === item.phase_id)
-                const nextPhase = phases.find(p => p.order_index === (currentPhase?.order_index || 0) + 1)
-                return (
-                  <MilestoneItem
-                    milestone={item}
-                    courseId={courseId}
-                    nextPhaseId={nextPhase?.id}
-                    nextPhaseTitle={nextPhase?.title}
-                    onRefresh={loadStepsAndMilestones}
-                  />
-                )
-              })()
-            ) : (
+        ListHeaderComponent={<View style={{ height: height / 3.5 }} />}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise(resolve => setTimeout(resolve, 500));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 0.33 });
+          });
+        }}
+      />
+
+      {/* STEP DETAIL MODAL */}
+      <Modal
+        visible={!!selectedStep}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedStep(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+          <View style={{ flex: 1, marginTop: spacing.md }}>
+            <View style={{ padding: spacing.md, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
+              <Pressable onPress={() => setSelectedStep(null)} style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 20 }}>
+                <Text style={{ fontSize: 16, color: '#000', fontWeight: 'bold' }}>✕</Text>
+              </Pressable>
+            </View>
+
+            {selectedStep && (
               <StepItem
-                step={item}
-                onUpdateStatus={updateStepStatus}
-                index={steps.findIndex(s => s.id === item.id)}
+                step={selectedStep}
+                onUpdateStatus={async (id, status) => {
+                  await updateStepStatus(id, status)
+                  if (status === 'completed' || status === 'skipped') {
+                    setSelectedStep(null)
+                  }
+                }}
+                index={steps.findIndex(s => s.id === selectedStep.id)}
                 daysPerStep={daysPerStep}
                 courseCreatedAt={courseCreatedAt}
                 firstIncompleteIndex={steps.findIndex(s => !s.completed)}
@@ -339,9 +474,47 @@ export default function CourseScreen() {
               />
             )}
           </View>
-        )}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      />
+        </View>
+      </Modal>
+
+      {/* MILESTONE DETAIL MODAL */}
+      <Modal
+        visible={!!selectedMilestone}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedMilestone(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+          <View style={{ flex: 1, marginTop: spacing.md }}>
+            <View style={{ padding: spacing.md, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
+              <Pressable onPress={() => setSelectedMilestone(null)} style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 20 }}>
+                <Text style={{ fontSize: 16, color: '#000', fontWeight: 'bold' }}>✕</Text>
+              </Pressable>
+            </View>
+
+            {selectedMilestone && (() => {
+              const currentPhase = phases.find(ph => ph.id === selectedMilestone.phase_id)
+              const nextPhase = phases.find(p => p.order_index === (currentPhase?.order_index || 0) + 1)
+              const isNextPhaseGenerated = nextPhase ? steps.some(s => s.phase_id === nextPhase.id) : false
+
+              return (
+                <MilestoneItem
+                  milestone={selectedMilestone}
+                  courseId={courseId}
+                  nextPhaseId={nextPhase?.id}
+                  nextPhaseTitle={nextPhase?.title}
+                  isNextPhaseGenerated={isNextPhaseGenerated}
+                  onRefresh={(shouldClose) => {
+                    loadStepsAndMilestones()
+                    if (shouldClose) setSelectedMilestone(null)
+                  }}
+                />
+              )
+            })()}
+          </View>
+        </View>
+      </Modal>
+
     </View>
   )
 }

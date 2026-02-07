@@ -21,7 +21,8 @@ type MilestoneItemProps = {
     courseId: string
     nextPhaseId?: string | null
     nextPhaseTitle?: string | null
-    onRefresh: () => void
+    isNextPhaseGenerated?: boolean
+    onRefresh: (shouldClose?: boolean) => void
 }
 
 export default function MilestoneItem({
@@ -29,11 +30,60 @@ export default function MilestoneItem({
     courseId,
     nextPhaseId,
     nextPhaseTitle,
+    isNextPhaseGenerated,
     onRefresh,
 }: MilestoneItemProps) {
     const insets = useSafeAreaInsets()
+    const [localMilestone, setLocalMilestone] = useState(milestone)
     const [isGenerating, setIsGenerating] = useState(false)
+    const [loadingStatus, setLoadingStatus] = useState<any>('GENERATING_MILESTONE')
     const [error, setError] = useState<string | null>(null)
+
+    React.useEffect(() => {
+        if ((milestone as any).isVirtual) {
+            handleGenerateMilestone()
+        } else {
+            setLocalMilestone(milestone)
+        }
+    }, [milestone])
+
+    async function handleGenerateMilestone() {
+        if (!(milestone as any).isVirtual) return
+
+        setIsGenerating(true)
+        setLoadingStatus('GENERATING_MILESTONE')
+        setError(null)
+        try {
+            const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
+            const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/create-milestone`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                },
+                body: JSON.stringify({
+                    courseId,
+                    phaseId: milestone.phase_id,
+                    phaseTitle: milestone.title,
+                }),
+            })
+
+            const data = await res.json()
+            if (!res.ok || !data.success) throw new Error(data.error || 'Errore nella generazione della milestone')
+
+            setLocalMilestone(data.milestone)
+
+            // Re-fetch parent data so the map node is no longer 'virtual'
+            onRefresh(false)
+        } catch (err: any) {
+            console.error('❌ Milestone Generation error:', err)
+            setError(err.message || 'Errore durante la generazione')
+        } finally {
+            setIsGenerating(false)
+        }
+    }
 
     async function handleStartNextPhase() {
         if (!nextPhaseId) {
@@ -41,7 +91,15 @@ export default function MilestoneItem({
             return
         }
 
+        // REDUNDANCY CHECK: If steps already exist for the next phase, don't generate again
+        if (isNextPhaseGenerated) {
+            console.log("Next phase already has steps. Skipping generation.");
+            onRefresh(true);
+            return;
+        }
+
         setIsGenerating(true)
+        setLoadingStatus('GENERATING_STEPS')
         setError(null)
         const startTime = Date.now()
 
@@ -81,7 +139,7 @@ export default function MilestoneItem({
                 await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
             }
 
-            onRefresh()
+            onRefresh(true)
         } catch (err: any) {
             console.error('❌ Generation error:', err)
             setError(err.message || 'Errore durante la generazione')
@@ -99,18 +157,20 @@ export default function MilestoneItem({
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.card}>
+                    {error && <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>}
+
                     <Text style={styles.badge}>SFIDA FINALE</Text>
 
-                    <Text style={styles.title}>{milestone.title}</Text>
+                    <Text style={styles.title}>{localMilestone.title}</Text>
 
                     <View style={styles.divider} />
 
-                    <Text style={styles.description}>{milestone.description}</Text>
+                    <Text style={styles.description}>{localMilestone.description}</Text>
 
                     <View style={styles.typeContainer}>
                         <Text style={styles.typeLabel}>Modalità di verifica:</Text>
                         <Text style={styles.typeValue}>
-                            {milestone.milestone_type.replace('_', ' ').toUpperCase()}
+                            {localMilestone.milestone_type?.replace('_', ' ').toUpperCase() || 'VALUTAZIONE'}
                         </Text>
                     </View>
 
@@ -127,7 +187,7 @@ export default function MilestoneItem({
                     </Pressable>
                 </View>
             </ScrollView>
-            <LoadingOverlay visible={isGenerating} status="GENERATING_STEPS" />
+            <LoadingOverlay visible={isGenerating} status={loadingStatus} />
         </View>
     )
 }
