@@ -1,6 +1,5 @@
+import { palette, typography } from '@/lib/theme';
 import { StyleSheet, Text, type TextProps } from 'react-native';
-
-import { useThemeColor } from '@/hooks/use-theme-color';
 
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
@@ -15,7 +14,7 @@ export function ThemedText({
   type = 'default',
   ...rest
 }: ThemedTextProps) {
-  const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
+  const color = lightColor || palette.black;
 
   return (
     <Text
@@ -35,26 +34,27 @@ export function ThemedText({
 
 const styles = StyleSheet.create({
   default: {
+    ...typography.body,
     fontSize: 16,
-    lineHeight: 24,
   },
   defaultSemiBold: {
+    ...typography.body,
     fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   title: {
+    ...typography.title,
     fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 32,
   },
   subtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...typography.title,
+    fontSize: 24,
   },
   link: {
-    lineHeight: 30,
+    ...typography.body,
     fontSize: 16,
-    color: '#0a7ea4',
+    color: palette.black,
+    textDecorationLine: 'underline',
   },
 });
+

@@ -13,7 +13,7 @@ import {
     View,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
-import { colors, layout, radius, spacing } from '../lib/theme'
+import { palette, spacing, typography } from '../lib/theme'
 
 export default function LoginScreen() {
     const router = useRouter()
@@ -34,7 +34,6 @@ export default function LoginScreen() {
             Alert.alert('Errore Login', error.message)
             setLoading(false)
         } else {
-            // Login successful, auth state change will handle navigation/context updates
             setLoading(false)
             router.replace('/')
         }
@@ -44,7 +43,7 @@ export default function LoginScreen() {
         setLoading(true)
         const {
             data: { session },
-            error,
+            error, 
         } = await supabase.auth.signUp({
             email,
             password,
@@ -63,7 +62,7 @@ export default function LoginScreen() {
 
         if (!session) {
             Alert.alert('Controlla la tua email', 'Ti abbiamo inviato un link di conferma!')
-            setIsRegistering(false) // Switch back to login or stay here
+            setIsRegistering(false)
         } else {
             router.replace('/')
         }
@@ -79,6 +78,7 @@ export default function LoginScreen() {
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
             >
                 <View style={styles.header}>
                     <Text style={styles.title}>
@@ -98,7 +98,7 @@ export default function LoginScreen() {
                             <TextInput
                                 style={styles.input}
                                 placeholder="Mario Rossi"
-                                placeholderTextColor={colors.mutedText}
+                                placeholderTextColor={palette.gray}
                                 value={fullName}
                                 onChangeText={setFullName}
                                 autoCapitalize="words"
@@ -111,7 +111,7 @@ export default function LoginScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="tuo@email.com"
-                            placeholderTextColor={colors.mutedText}
+                            placeholderTextColor={palette.gray}
                             value={email}
                             onChangeText={setEmail}
                             autoCapitalize="none"
@@ -124,7 +124,7 @@ export default function LoginScreen() {
                         <TextInput
                             style={styles.input}
                             placeholder="••••••••"
-                            placeholderTextColor={colors.mutedText}
+                            placeholderTextColor={palette.gray}
                             value={password}
                             onChangeText={setPassword}
                             secureTextEntry
@@ -134,13 +134,14 @@ export default function LoginScreen() {
                     <TouchableOpacity
                         style={[styles.button, loading && styles.buttonDisabled]}
                         disabled={loading}
+                        activeOpacity={0.8}
                         onPress={isRegistering ? signUpWithEmail : signInWithEmail}
                     >
                         {loading ? (
-                            <ActivityIndicator color="#fff" />
+                            <ActivityIndicator color={palette.white} />
                         ) : (
                             <Text style={styles.buttonText}>
-                                {isRegistering ? 'Registrati' : 'Accedi'}
+                                {isRegistering ? 'REGISTRATI' : 'ACCEDI'}
                             </Text>
                         )}
                     </TouchableOpacity>
@@ -164,82 +165,88 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: palette.white,
     },
     scrollContent: {
         flexGrow: 1,
-        padding: layout.screenPadding,
+        padding: spacing.lg,
         justifyContent: 'center',
     },
-    backButton: {
-        marginBottom: spacing.lg,
-        alignSelf: 'flex-start',
-    },
     header: {
-        marginBottom: spacing.xl,
+        marginBottom: 40,
     },
     title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: colors.textPrimary,
-        marginBottom: spacing.xs,
+        ...typography.title,
+        fontSize: 40,
+        marginBottom: 8,
     },
     subtitle: {
-        fontSize: 16,
-        color: colors.textSecondary,
+        ...typography.body,
+        color: palette.gray,
+        fontSize: 18,
     },
     form: {
         width: '100%',
     },
     inputGroup: {
-        marginBottom: spacing.md,
+        marginBottom: 20,
     },
     label: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: colors.textPrimary,
-        marginBottom: spacing.xs,
+        ...typography.label,
+        fontSize: 12,
+        letterSpacing: 2,
+        marginBottom: 8,
     },
     input: {
-        backgroundColor: colors.card,
-        borderRadius: radius.md,
-        paddingVertical: 12, // slightly taller
-        paddingHorizontal: spacing.md,
+        backgroundColor: palette.lightGray,
+        borderRadius: 24,
+        paddingVertical: 16,
+        paddingHorizontal: 24,
         fontSize: 16,
-        color: colors.textPrimary,
-        borderWidth: 1,
-        borderColor: colors.border,
+        color: palette.black,
+        borderWidth: 2,
+        borderColor: palette.border,
+        fontWeight: '600',
     },
     button: {
-        backgroundColor: colors.primaryButton,
-        paddingVertical: 16,
-        borderRadius: radius.md,
+        backgroundColor: palette.black,
+        paddingVertical: 18,
+        borderRadius: 30,
         alignItems: 'center',
-        marginTop: spacing.md,
+        marginTop: 20,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
     },
     buttonDisabled: {
-        opacity: 0.7,
+        opacity: 0.6,
     },
     buttonText: {
-        color: '#fff',
+        color: palette.white,
         fontSize: 16,
-        fontWeight: 'bold',
+        fontWeight: '900',
+        letterSpacing: 1,
     },
     footer: {
         flexDirection: 'row',
         justifyContent: 'center',
-        marginTop: spacing.xl,
-        gap: spacing.xs,
+        marginTop: 30,
+        gap: 8,
     },
     footerText: {
-        color: colors.textSecondary,
-        fontSize: 14,
+        ...typography.body,
+        color: palette.gray,
+        fontSize: 15,
     },
     link: {
-        color: colors.textPrimary, // Or an accent color if defined
-        fontWeight: 'bold',
-        fontSize: 14,
+        ...typography.body,
+        color: palette.black,
+        fontWeight: '800',
+        fontSize: 15,
     },
 });
+
 
 

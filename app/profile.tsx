@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
-import { colors, layout, spacing } from '../lib/theme'
+import { palette, spacing, typography } from '../lib/theme'
 
 export default function ProfileScreen() {
     const { user, profile, signOut, loading } = useAuth()
@@ -40,20 +40,17 @@ export default function ProfileScreen() {
                 options={{
                     headerShown: true,
                     title: 'Profilo',
-                    headerTitleStyle: { color: colors.textPrimary },
+                    headerTitleStyle: { ...typography.body, fontSize: 18, fontWeight: '800' },
                     headerShadowVisible: false,
-                    headerLeft: () => (
-                        <TouchableOpacity onPress={() => router.back()}>
-                            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-                        </TouchableOpacity>
-                    ),
+                    headerLeft: () => null,
+                    headerBackVisible: false,
                 }}
             />
 
-            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 }]}>
+            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 150 }]}>
                 <View style={styles.header}>
                     <View style={styles.avatarPlaceholder}>
-                        <Ionicons name="person" size={50} color={colors.mutedText} />
+                        <Ionicons name="person" size={50} color={palette.gray} />
                     </View>
                     <Text style={styles.name}>
                         {profile?.full_name || 'Utente Obby'}
@@ -64,30 +61,28 @@ export default function ProfileScreen() {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Account</Text>
 
-
-                    <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+                    <TouchableOpacity style={styles.menuItem} onPress={handleSignOut} activeOpacity={0.7}>
                         <View style={[styles.iconContainer, { backgroundColor: '#FFEEF0' }]}>
                             <Ionicons name="log-out" size={20} color="#FF4444" />
                         </View>
-                        <Text style={[styles.menuText, { color: '#FF4444' }]}>Esci dall'account</Text>
-                        <Ionicons name="chevron-forward" size={20} color={colors.mutedText} />
+                        <Text style={[styles.menuText, { color: '#FF4444', fontWeight: '700' }]}>Esci dall'account</Text>
+                        <Ionicons name="chevron-forward" size={20} color={palette.gray} />
                     </TouchableOpacity>
-
                 </View>
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>App</Text>
                     <View style={styles.menuItem}>
                         <View style={styles.iconContainer}>
-                            <Ionicons name="shield-checkmark" size={20} color={colors.textPrimary} />
+                            <Ionicons name="shield-checkmark" size={20} color={palette.black} />
                         </View>
                         <Text style={styles.menuText}>Privacy & Sicurezza (RLS Attiva)</Text>
                     </View>
                     <View style={styles.menuItem}>
                         <View style={styles.iconContainer}>
-                            <Ionicons name="information-circle" size={20} color={colors.textPrimary} />
+                            <Ionicons name="information-circle" size={20} color={palette.black} />
                         </View>
-                        <Text style={styles.menuText}>Versione 1.0.7</Text>
+                        <Text style={styles.menuText}>Versione 1.1.0</Text>
                     </View>
                 </View>
             </ScrollView>
@@ -98,10 +93,10 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: palette.white,
     },
     content: {
-        padding: layout.screenPadding,
+        padding: spacing.lg,
     },
     header: {
         alignItems: 'center',
@@ -111,53 +106,56 @@ const styles = StyleSheet.create({
         width: 100,
         height: 100,
         borderRadius: 50,
-        backgroundColor: colors.card,
+        backgroundColor: palette.lightGray,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: spacing.md,
-        borderWidth: 1,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: palette.border,
     },
     name: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: colors.textPrimary,
+        ...typography.title,
+        fontSize: 28,
     },
     email: {
+        ...typography.body,
         fontSize: 16,
-        color: colors.textSecondary,
+        color: palette.gray,
         marginTop: 4,
     },
     section: {
         marginTop: spacing.xl,
     },
     sectionTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: colors.mutedText,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
+        ...typography.label,
+        fontSize: 12,
+        letterSpacing: 2,
         marginBottom: spacing.md,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        backgroundColor: palette.lightGray,
+        borderRadius: 24,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: palette.border,
     },
     iconContainer: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.card,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: palette.white,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: spacing.md,
     },
     menuText: {
         flex: 1,
+        ...typography.body,
         fontSize: 16,
-        color: colors.textPrimary,
     },
 })
+

@@ -1,7 +1,7 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
 import { LoadingStatus } from '@/lib/loadingMessages'
 import { supabase } from '@/lib/supabase'
-import { colors, layout, radius, spacing, typography } from '@/lib/theme'
+import { palette, radius, spacing, typography } from '@/lib/theme'
 import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
@@ -191,27 +191,26 @@ export default function NewCourseAIScreen() {
   const insets = useSafeAreaInsets()
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: palette.white }}>
       <ScrollView
         contentContainerStyle={{
-          padding: layout.screenPadding,
+          padding: spacing.lg,
           paddingTop: insets.top + spacing.md,
           paddingBottom: insets.bottom + spacing.xl
         }}
-        bounces={false}
-        alwaysBounceVertical={false}
+        showsVerticalScrollIndicator={false}
       >
 
         {/* Pulsante Indietro */}
-        <Pressable onPress={() => router.back()} style={{ marginBottom: spacing.md }}>
-          <Text style={{ fontSize: 32, color: colors.primaryButton }}>←</Text>
+        <Pressable onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: palette.black, justifyContent: 'center', alignItems: 'center', marginBottom: spacing.xl }}>
+          <Text style={{ fontSize: 20, fontWeight: '800' }}>←</Text>
         </Pressable>
 
-        <Text style={{ ...typography.title, color: '#000000', marginBottom: spacing.sm }}>
+        <Text style={{ ...typography.title, marginBottom: 8 }}>
           AI Builder
         </Text>
 
-        <Text style={{ ...typography.body, color: '#000000', marginBottom: spacing.lg }}>
+        <Text style={{ ...typography.body, color: palette.gray, marginBottom: spacing.xl }}>
           Descrivi cosa vuoi imparare e l'AI creerà un percorso su misura per te.
         </Text>
 
@@ -220,19 +219,18 @@ export default function NewCourseAIScreen() {
             value={courseInput}
             onChangeText={setCourseInput}
             placeholder="Es. Corso intensivo di cucina giapponese per principianti"
-            placeholderTextColor={colors.mutedText}
+            placeholderTextColor={palette.gray}
             multiline
             style={{
               ...typography.body,
-              backgroundColor: colors.card,
-              borderRadius: radius.md,
-              padding: spacing.md,
-              paddingRight: 60,
-              minHeight: 200,
-              borderWidth: 1,
-              borderColor: colors.border,
+              backgroundColor: palette.lightGray,
+              borderRadius: 32,
+              padding: 24,
+              minHeight: 180,
+              borderWidth: 2,
+              borderColor: palette.border,
               textAlignVertical: 'top',
-              color: '#000000'
+              color: palette.black
             }}
           />
           {courseInput.trim().length > 0 && !isProcessing && (
@@ -240,29 +238,33 @@ export default function NewCourseAIScreen() {
               onPress={handleGenerateComplete}
               style={{
                 position: 'absolute',
-                top: spacing.sm,
-                right: spacing.sm,
-                backgroundColor: colors.primaryButton,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                borderRadius: radius.sm,
-                elevation: 2,
+                bottom: -20,
+                alignSelf: 'center',
+                backgroundColor: palette.black,
+                paddingHorizontal: 32,
+                paddingVertical: 14,
+                borderRadius: 24,
+                elevation: 4,
+                shadowColor: palette.black,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
               }}
             >
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>VAI</Text>
+              <Text style={{ color: palette.white, fontWeight: '800', fontSize: 16 }}>GENERA ORA</Text>
             </Pressable>
           )}
         </View>
 
         {/* SLIDER PER IL TEMPO */}
-        <View style={{ marginTop: spacing.xl }}>
+        <View style={{ marginTop: 60 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.body, color: '#000000', fontWeight: '700' }}>
+            <Text style={{ ...typography.body, fontWeight: '800' }}>
               Pace dell'apprendimento
             </Text>
-            <View style={{ backgroundColor: colors.primaryButton, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>
-                {stepsPerWeek} {stepsPerWeek === 1 ? 'step' : 'step'} / sett
+            <View style={{ backgroundColor: palette.black, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+              <Text style={{ color: palette.white, fontWeight: '800', fontSize: 13 }}>
+                {stepsPerWeek} step / sett
               </Text>
             </View>
           </View>
@@ -273,27 +275,27 @@ export default function NewCourseAIScreen() {
             maximumValue={7}
             step={1}
             onValueChange={setStepsPerWeek}
-            minimumTrackTintColor={colors.mutedText}
-            maximumTrackTintColor="#EEEEEE"
-            thumbSize={24}
-            thumbTintColor={colors.mutedText}
-            trackHeight={8}
+            minimumTrackTintColor={palette.black}
+            maximumTrackTintColor={palette.lightGray}
+            thumbSize={28}
+            thumbTintColor={palette.black}
+            trackHeight={10}
           />
 
-          <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: spacing.xs }}>
+          <Text style={{ color: palette.gray, fontSize: 14, fontWeight: '600', marginTop: spacing.sm }}>
             {stepsPerWeek <= 2 ? '🏁 Passo rilassato' : stepsPerWeek <= 5 ? '⚡ Passo costante' : '🔥 Passo intensivo'}
           </Text>
         </View>
 
         {/* SELECTOR: RESOURCE TYPE */}
-        <View style={{ marginTop: spacing.lg }}>
-          <Text style={{ ...typography.body, color: '#000000', fontWeight: '700', marginBottom: spacing.sm }}>
+        <View style={{ marginTop: spacing.xl }}>
+          <Text style={{ ...typography.body, fontWeight: '800', marginBottom: spacing.md }}>
             Tipo di Risorse
           </Text>
-          <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: 4, borderWidth: 1, borderColor: colors.border }}>
+          <View style={{ flexDirection: 'row', backgroundColor: palette.lightGray, borderRadius: 24, padding: 6, borderWidth: 2, borderColor: palette.border }}>
             {(['video', 'mixed', 'web'] as const).map((mode) => {
               const isActive = searchMode === mode
-              const labels = { video: 'Solo Video', mixed: 'Misto (AI)', web: 'Solo Web' }
+              const labels = { video: 'Video', mixed: 'Misto', web: 'Web' }
               const icons = { video: '▶️', mixed: '✨', web: '🌐' }
 
               return (
@@ -302,17 +304,17 @@ export default function NewCourseAIScreen() {
                   onPress={() => setSearchMode(mode)}
                   style={{
                     flex: 1,
-                    paddingVertical: spacing.sm,
-                    borderRadius: radius.sm,
-                    backgroundColor: isActive ? colors.primaryButton : 'transparent',
+                    paddingVertical: 12,
+                    borderRadius: 20,
+                    backgroundColor: isActive ? palette.black : 'transparent',
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}
                 >
                   <Text style={{
-                    color: isActive ? '#FFF' : '#000',
-                    fontWeight: isActive ? '700' : '400',
-                    fontSize: 13
+                    color: isActive ? palette.white : palette.black,
+                    fontWeight: '800',
+                    fontSize: 14
                   }}>
                     {icons[mode]} {labels[mode]}
                   </Text>
@@ -325,7 +327,7 @@ export default function NewCourseAIScreen() {
         {isProcessing && (
           <View
             style={{
-              backgroundColor: colors.primaryButton,
+              backgroundColor: palette.black,
               padding: spacing.md,
               borderRadius: radius.md,
               marginTop: spacing.xl,
@@ -333,7 +335,7 @@ export default function NewCourseAIScreen() {
               elevation: 2
             }}
           >
-            <Text style={{ color: '#FFF', textAlign: 'center', fontWeight: '700', fontSize: 18 }}>
+            <Text style={{ color: palette.white, textAlign: 'center', fontWeight: '700', fontSize: 18 }}>
               Costruendo il tuo percorso...
             </Text>
           </View>
@@ -343,14 +345,14 @@ export default function NewCourseAIScreen() {
         {error && (
           <View style={{
             marginTop: spacing.xl,
-            padding: spacing.md,
-            backgroundColor: '#331111',
-            borderRadius: radius.md,
-            borderWidth: 1,
+            padding: 20,
+            backgroundColor: '#FFEBEB',
+            borderRadius: 24,
+            borderWidth: 2,
             borderColor: '#FF4444'
           }}>
-            <Text style={{ color: '#FF8080', fontWeight: 'bold', marginBottom: 4 }}>⚠️ ERRORE GENERAZIONE:</Text>
-            <Text style={{ color: '#FFCCCC', fontSize: 14 }}>{error}</Text>
+            <Text style={{ color: '#FF4444', fontWeight: '900', marginBottom: 4 }}>⚠️ ERRORE</Text>
+            <Text style={{ color: '#666', fontSize: 14, fontWeight: '500' }}>{error}</Text>
           </View>
         )}
       </ScrollView>

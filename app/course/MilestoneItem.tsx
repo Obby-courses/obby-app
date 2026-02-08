@@ -1,5 +1,5 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
-import { colors, radius, spacing, typography } from '@/lib/theme'
+import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import {
     Pressable,
@@ -23,6 +23,7 @@ type MilestoneItemProps = {
     nextPhaseTitle?: string | null
     isNextPhaseGenerated?: boolean
     onRefresh: (shouldClose?: boolean) => void
+    courseColor?: string
 }
 
 export default function MilestoneItem({
@@ -32,6 +33,7 @@ export default function MilestoneItem({
     nextPhaseTitle,
     isNextPhaseGenerated,
     onRefresh,
+    courseColor = palette.black,
 }: MilestoneItemProps) {
     const insets = useSafeAreaInsets()
     const [localMilestone, setLocalMilestone] = useState(milestone)
@@ -74,8 +76,6 @@ export default function MilestoneItem({
             if (!res.ok || !data.success) throw new Error(data.error || 'Errore nella generazione della milestone')
 
             setLocalMilestone(data.milestone)
-
-            // Re-fetch parent data so the map node is no longer 'virtual'
             onRefresh(false)
         } catch (err: any) {
             console.error('❌ Milestone Generation error:', err)
@@ -86,14 +86,8 @@ export default function MilestoneItem({
     }
 
     async function handleStartNextPhase() {
-        if (!nextPhaseId) {
-            // Probably at the end of the course
-            return
-        }
-
-        // REDUNDANCY CHECK: If steps already exist for the next phase, don't generate again
+        if (!nextPhaseId) return
         if (isNextPhaseGenerated) {
-            console.log("Next phase already has steps. Skipping generation.");
             onRefresh(true);
             return;
         }
@@ -107,7 +101,6 @@ export default function MilestoneItem({
             const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
             const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
-            // 1. Generate Steps
             const res = await fetch(`${SUPABASE_URL}/functions/v1/create-steps`, {
                 method: 'POST',
                 headers: {
@@ -123,7 +116,6 @@ export default function MilestoneItem({
 
             if (!res.ok) throw new Error('Errore nella creazione degli step')
 
-            // 2. Generate Resources
             await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
                 method: 'POST',
                 headers: {
@@ -133,11 +125,8 @@ export default function MilestoneItem({
                 body: JSON.stringify({ phaseId: nextPhaseId }),
             })
 
-            // Min 1.5s transition
             const elapsed = Date.now() - startTime
-            if (elapsed < 1500) {
-                await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
-            }
+            if (elapsed < 1500) await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
 
             onRefresh(true)
         } catch (err: any) {
@@ -153,36 +142,40 @@ export default function MilestoneItem({
                 style={{ flex: 1 }}
                 contentContainerStyle={{
                     paddingBottom: insets.bottom + 40,
+                    paddingHorizontal: spacing.lg,
                 }}
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.card}>
-                    {error && <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>}
+                    {error && (
+                        <View style={styles.errorBox}>
+                            <Text style={{ color: '#FF4444', fontWeight: '800' }}>⚠️ {error}</Text>
+                        </View>
+                    )}
 
-                    <Text style={styles.badge}>SFIDA FINALE</Text>
-
+                    <Text style={styles.badge}>TRAGUARDO</Text>
                     <Text style={styles.title}>{localMilestone.title}</Text>
 
                     <View style={styles.divider} />
 
                     <Text style={styles.description}>{localMilestone.description}</Text>
 
-                    <View style={styles.typeContainer}>
+                    <View style={[styles.typeContainer, { backgroundColor: palette.lightGray }]}>
                         <Text style={styles.typeLabel}>Modalità di verifica:</Text>
                         <Text style={styles.typeValue}>
                             {localMilestone.milestone_type?.replace('_', ' ').toUpperCase() || 'VALUTAZIONE'}
                         </Text>
                     </View>
 
-                    <View style={{ flex: 1, minHeight: 40 }} />
+                    <View style={{ flex: 1, minHeight: 60 }} />
 
                     <Pressable
                         onPress={handleStartNextPhase}
                         disabled={isGenerating}
-                        style={[styles.button, isGenerating && { opacity: 0.7 }]}
+                        style={[styles.button, { backgroundColor: courseColor === palette.black ? palette.black : courseColor }, isGenerating && { opacity: 0.6 }]}
                     >
                         <Text style={styles.buttonText}>
-                            {nextPhaseTitle ? `Inizia: ${nextPhaseTitle}` : 'Completa Corso'}
+                            {nextPhaseTitle ? `PROSSIMA FASE: ${nextPhaseTitle.toUpperCase()}` : 'COMPLETA PERCORSO'}
                         </Text>
                     </Pressable>
                 </View>
@@ -194,68 +187,81 @@ export default function MilestoneItem({
 
 const styles = StyleSheet.create({
     card: {
-        backgroundColor: '#ffffff',
-        borderRadius: radius.lg,
-        padding: spacing.xl,
-        borderWidth: 1,
-        borderColor: '#f0f0f0',
-        minHeight: 450,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        backgroundColor: palette.white,
+        borderRadius: 40,
+        padding: 32,
+        borderWidth: 2,
+        borderColor: palette.border,
+        minHeight: 480,
+        marginTop: 20,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 4,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    errorBox: {
+        backgroundColor: '#FFEBEB',
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: '#FF4444',
     },
     badge: {
-        ...typography.small,
-        color: colors.accent,
-        fontWeight: '700',
-        marginBottom: spacing.sm,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
+        ...typography.label,
+        fontSize: 12,
+        letterSpacing: 2,
+        marginBottom: 8,
     },
     title: {
         ...typography.title,
-        fontSize: 24,
+        fontSize: 32,
         marginBottom: spacing.md,
     },
     divider: {
-        height: 1,
-        backgroundColor: colors.border,
-        marginBottom: spacing.lg,
+        height: 2,
+        backgroundColor: palette.border,
+        marginBottom: spacing.xl,
     },
     description: {
         ...typography.body,
-        color: colors.textSecondary,
-        lineHeight: 24,
+        color: '#444',
+        fontSize: 16,
+        lineHeight: 26,
     },
     typeContainer: {
-        backgroundColor: '#f9f9f9',
-        padding: spacing.md,
-        borderRadius: radius.md,
-        marginTop: spacing.xl,
+        padding: 20,
+        borderRadius: 24,
+        marginTop: 40,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: palette.border,
     },
     typeLabel: {
-        ...typography.small,
-        color: colors.mutedText,
+        ...typography.label,
+        fontSize: 11,
         marginBottom: 4,
     },
     typeValue: {
         ...typography.body,
-        fontWeight: '600',
+        fontWeight: '800',
+        fontSize: 14,
     },
     button: {
-        backgroundColor: colors.primaryButton,
-        paddingVertical: spacing.md,
-        borderRadius: radius.md,
-        marginTop: spacing.xl,
+        paddingVertical: 18,
+        borderRadius: 30,
+        marginTop: 20,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
     },
     buttonText: {
-        color: '#ffffff',
+        color: palette.black,
         textAlign: 'center',
-        fontWeight: '700',
-        fontSize: 16,
+        fontWeight: '900',
+        fontSize: 14,
+        letterSpacing: 1,
     },
 })

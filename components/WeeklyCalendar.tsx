@@ -1,10 +1,10 @@
-import { colors, radius, spacing } from '@/lib/theme'
+import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handler'
 
 type WeeklyCalendarProps = {
-    tasksByDate: Record<string, number>
+    tasksByDate: Record<string, string[]>
 }
 
 export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
@@ -39,7 +39,6 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
 
     const changeMonth = (delta: number) => {
         const newDate = new Date(viewDate)
-        // Set date to 1 to avoid skipping months
         newDate.setDate(1)
         newDate.setMonth(newDate.getMonth() + delta)
         setViewDate(newDate)
@@ -52,34 +51,18 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
     }
 
     const handleSwipe = (direction: 'left' | 'right') => {
-        if (expanded) {
-            // Month change
-            // Left swipe -> Next Month (+1)
-            // Right swipe -> Prev Month (-1)
-            changeMonth(direction === 'left' ? 1 : -1)
-        } else {
-            // Week change
-            // Left swipe -> Next Week (+1)
-            // Right swipe -> Prev Week (-1)
-            changeWeek(direction === 'left' ? 1 : -1)
-        }
+        if (expanded) changeMonth(direction === 'left' ? 1 : -1)
+        else changeWeek(direction === 'left' ? 1 : -1)
     }
 
-    // Gestures
     const swipeLeft = Gesture.Fling().direction(Directions.LEFT).onEnd(() => handleSwipe('left')).runOnJS(true)
     const swipeRight = Gesture.Fling().direction(Directions.RIGHT).onEnd(() => handleSwipe('right')).runOnJS(true)
-    const swipeDown = Gesture.Fling().direction(Directions.DOWN).onEnd(() => {
-        if (expanded) setExpanded(false)
-    }).runOnJS(true)
-    const swipeUp = Gesture.Fling().direction(Directions.UP).onEnd(() => {
-        if (!expanded) setExpanded(true)
-    }).runOnJS(true)
+    const swipeDown = Gesture.Fling().direction(Directions.DOWN).onEnd(() => { if (expanded) setExpanded(false) }).runOnJS(true)
+    const swipeUp = Gesture.Fling().direction(Directions.UP).onEnd(() => { if (!expanded) setExpanded(true) }).runOnJS(true)
     const composed = Gesture.Race(swipeLeft, swipeRight, swipeDown, swipeUp)
 
-    // Calcolo delle settimane da mostrare
     const getWeeks = () => {
         if (!expanded) {
-            // Settimana visualizzata (basata su viewDate)
             const monday = getMonday(viewDate)
             const week = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date(monday)
@@ -88,18 +71,14 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
             })
             return [week]
         } else {
-            // Mese selezionato
             const year = viewDate.getFullYear()
             const month = viewDate.getMonth()
-
             const firstDayOfMonth = new Date(year, month, 1)
             const startGrid = getMonday(firstDayOfMonth)
-
             const lastDayOfMonth = new Date(year, month + 1, 0)
             const lastDayOfWeek = lastDayOfMonth.getDay()
-            const daysUntilSunday = (7 - lastDayOfWeek) % 7
             const endGrid = new Date(lastDayOfMonth)
-            endGrid.setDate(lastDayOfMonth.getDate() + daysUntilSunday)
+            endGrid.setDate(lastDayOfMonth.getDate() + ((7 - lastDayOfWeek) % 7))
 
             const weeks: Date[][] = []
             let current = new Date(startGrid)
@@ -117,7 +96,6 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
 
     const weeks = getWeeks()
 
-    // Mese visualizzato 
     let monthLabel = ''
     if (expanded) {
         monthLabel = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' }).format(viewDate).toUpperCase()
@@ -125,12 +103,10 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
         const monday = getMonday(viewDate)
         const sunday = new Date(monday)
         sunday.setDate(monday.getDate() + 6)
-
         if (monday.getMonth() !== sunday.getMonth()) {
             const m1 = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(monday).toUpperCase()
             const m2 = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(sunday).toUpperCase()
-            const y = monday.getFullYear()
-            monthLabel = `${m1} - ${m2} ${y}`
+            monthLabel = `${m1} - ${m2} ${monday.getFullYear()}`
         } else {
             monthLabel = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' }).format(monday).toUpperCase()
         }
@@ -139,33 +115,19 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
     return (
         <GestureDetector gesture={composed}>
             <View style={styles.container}>
-                {expanded && (
-                    <View style={styles.header}>
-                        <Pressable
-                            onPress={() => changeMonth(-1)}
-                            style={styles.navButton}
-                            hitSlop={15}
-                        >
+                <View style={[styles.header, !expanded && { justifyContent: 'center', marginBottom: 6, paddingHorizontal: 0 }]}>
+                    {expanded && (
+                        <Pressable onPress={() => changeMonth(-1)} style={styles.navButton} hitSlop={15}>
                             <Text style={styles.navText}>←</Text>
                         </Pressable>
-
-                        <Text style={styles.monthTitle}>{monthLabel}</Text>
-
-                        <Pressable
-                            onPress={() => changeMonth(1)}
-                            style={styles.navButton}
-                            hitSlop={15}
-                        >
+                    )}
+                    <Text style={styles.monthTitle}>{monthLabel}</Text>
+                    {expanded && (
+                        <Pressable onPress={() => changeMonth(1)} style={styles.navButton} hitSlop={15}>
                             <Text style={styles.navText}>→</Text>
                         </Pressable>
-                    </View>
-                )}
-
-                {!expanded && (
-                    <View style={[styles.header, { justifyContent: 'center', marginBottom: 6, paddingHorizontal: 0 }]}>
-                        <Text style={styles.monthTitle}>{monthLabel}</Text>
-                    </View>
-                )}
+                    )}
+                </View>
 
                 <View style={styles.grid}>
                     {weeks.map((week, wIndex) => (
@@ -174,7 +136,8 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
                                 const isToday = date.getTime() === today.getTime()
                                 const isCurrentMonth = date.getMonth() === viewDate.getMonth()
                                 const dateKey = formatDateKey(date)
-                                const taskCount = tasksByDate[dateKey] || 0
+                                const colors = tasksByDate[dateKey] || []
+                                const taskCount = colors.length
 
                                 return (
                                     <View key={dIndex} style={styles.dayColumn}>
@@ -183,7 +146,6 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
                                                 {getDayLabel(date)}
                                             </Text>
                                         )}
-
                                         <View style={[
                                             styles.dateContainer,
                                             isToday && styles.todayContainer,
@@ -192,18 +154,22 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
                                             <Text style={[
                                                 styles.dateText,
                                                 isToday && styles.todayText,
-                                                !isCurrentMonth && expanded && { color: colors.textSecondary }
+                                                !isCurrentMonth && expanded && { color: palette.gray }
                                             ]}>
                                                 {date.getDate()}
                                             </Text>
-
                                             <View style={styles.dotsContainer}>
-                                                {Array.from({ length: Math.min(taskCount, 3) }).map((_, i) => (
-                                                    <View key={i} style={[styles.dot, isToday && styles.todayDot]} />
+                                                {colors.slice(0, 3).map((color, i) => (
+                                                    <View
+                                                        key={i}
+                                                        style={[
+                                                            styles.dot,
+                                                            { backgroundColor: isToday ? palette.white : color },
+                                                            isToday && styles.todayDot
+                                                        ]}
+                                                    />
                                                 ))}
-                                                {taskCount > 3 && (
-                                                    <Text style={[styles.plusText, isToday && styles.todayText]}>+</Text>
-                                                )}
+                                                {taskCount > 3 && <Text style={[styles.plusText, isToday && styles.todayText]}>+</Text>}
                                             </View>
                                         </View>
                                     </View>
@@ -213,18 +179,12 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
                     ))}
                 </View>
 
-                {/* Toggle Button */}
                 <Pressable
                     style={styles.expandButton}
-                    onPress={() => {
-                        // removed auto-reset to user's swipe preference
-                        setExpanded(!expanded)
-                    }}
+                    onPress={() => setExpanded(!expanded)}
                     hitSlop={15}
                 >
-                    <Text style={styles.arrowText}>
-                        {expanded ? '▲' : '▼'}
-                    </Text>
+                    <View style={styles.expandHandle} />
                 </Pressable>
             </View>
         </GestureDetector>
@@ -233,14 +193,19 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: colors.card,
-        borderRadius: radius.lg,
+        backgroundColor: palette.white,
+        borderRadius: 32,
         padding: spacing.md,
         paddingBottom: 4,
         marginTop: spacing.sm,
         marginBottom: spacing.lg,
-        borderWidth: 1,
-        borderColor: '#eee',
+        borderWidth: 2,
+        borderColor: palette.border,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 2,
     },
     header: {
         flexDirection: 'row',
@@ -250,19 +215,26 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.sm,
     },
     navButton: {
-        padding: 4,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: palette.lightGray,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: palette.border,
     },
     navText: {
-        fontSize: 18,
-        color: colors.primaryButton,
-        fontWeight: 'bold',
+        fontSize: 14,
+        color: palette.black,
+        fontWeight: '900',
     },
     monthTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: colors.textPrimary,
+        ...typography.label,
+        fontSize: 12,
+        letterSpacing: 2,
+        color: palette.black,
         textAlign: 'center',
-        letterSpacing: 1,
     },
     grid: {
         gap: 12,
@@ -277,71 +249,68 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     dayLabel: {
+        ...typography.label,
         fontSize: 10,
-        color: colors.mutedText,
-        marginBottom: 6,
-        fontWeight: '600',
-        textTransform: 'uppercase',
+        color: palette.gray,
+        marginBottom: 8,
     },
     todayLabel: {
-        color: colors.accent,
+        color: palette.black,
+        fontWeight: '900',
     },
     dateContainer: {
-        width: 32,
-        height: 44,
+        width: 36,
+        height: 48,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'transparent',
     },
     todayContainer: {
-        backgroundColor: colors.accent,
-        shadowColor: colors.accent,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
+        backgroundColor: palette.black,
+        borderRadius: 18,
     },
     dateText: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: colors.textPrimary,
+        ...typography.body,
+        fontSize: 14,
+        fontWeight: '800',
+        color: palette.black,
     },
     todayText: {
-        color: '#fff',
+        color: palette.white,
     },
     dotsContainer: {
         flexDirection: 'row',
-        marginTop: 3,
-        height: 5,
+        marginTop: 4,
+        height: 6,
         alignItems: 'center',
         justifyContent: 'center',
         gap: 2,
     },
     dot: {
-        width: 3,
-        height: 3,
-        borderRadius: 1.5,
-        backgroundColor: colors.accent,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: palette.black,
     },
     todayDot: {
-        backgroundColor: '#fff',
+        backgroundColor: palette.white,
     },
     plusText: {
-        fontSize: 7,
-        fontWeight: 'bold',
-        color: colors.accent,
-        marginLeft: 1,
+        fontSize: 8,
+        fontWeight: '900',
+        color: palette.black,
     },
     expandButton: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 8,
-        marginTop: 4,
+        paddingVertical: 12,
     },
-    arrowText: {
-        fontSize: 12,
-        color: colors.mutedText,
-        opacity: 0.6,
-    }
+    expandHandle: {
+        width: 32,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: palette.border,
+    },
 })
+

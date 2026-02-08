@@ -1,9 +1,5 @@
 import ResourcePreview from '@/components/ResourcePreview'
-import {
-  colors,
-  radius,
-  spacing
-} from '@/lib/theme'
+import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import {
   Image,
@@ -43,6 +39,7 @@ type StepItemProps = {
   courseCreatedAt: string
   firstIncompleteIndex: number
   referenceDate: string
+  courseColor?: string
 }
 
 /* ================================
@@ -57,6 +54,7 @@ export default function StepItem({
   courseCreatedAt,
   firstIncompleteIndex,
   referenceDate,
+  courseColor = palette.black,
 }: StepItemProps) {
   const insets = useSafeAreaInsets()
   const [showPreview, setShowPreview] = useState(false)
@@ -69,25 +67,6 @@ export default function StepItem({
   }
 
   const isCurrentStep = index === firstIncompleteIndex
-
-  // Color Interpolation (Green -> Yellow -> Red)
-  const getProgressColor = (p: number) => {
-    if (p > 0.5) {
-      // green to yellow
-      const ratio = (p - 0.5) * 2;
-      const r = Math.round(250 * (1 - ratio) + 74 * ratio);
-      const g = Math.round(204 * (1 - ratio) + 222 * ratio);
-      const b = Math.round(21 * (1 - ratio) + 128 * ratio);
-      return `rgb(${r},${g},${b})`;
-    } else {
-      // yellow to red
-      const ratio = p * 2;
-      const r = Math.round(248 * (1 - ratio) + 250 * ratio);
-      const g = Math.round(113 * (1 - ratio) + 204 * ratio);
-      const b = Math.round(113 * (1 - ratio) + 21 * ratio);
-      return `rgb(${r},${g},${b})`;
-    }
-  };
 
   // Funzione per formattare la data in Italiano
   const formatDate = (date: Date) => {
@@ -102,7 +81,6 @@ export default function StepItem({
   const relativeIndex = index >= firstIncompleteIndex ? index - firstIncompleteIndex : 0
   const totalDurationMs = (relativeIndex + 1) * daysPerStep * 24 * 60 * 60 * 1000
   const deadlineDateObj = new Date(start.getTime() + totalDurationMs)
-
   const deadlineDate = formatDate(deadlineDateObj)
 
   let remainingProgress = 1
@@ -113,7 +91,7 @@ export default function StepItem({
     remainingProgress = Math.max(0, Math.min(1, (stepDeadlineMs - now) / stepDurationMs))
   }
 
-  const progressColor = getProgressColor(remainingProgress)
+  const progressColor = remainingProgress > 0.5 ? palette.green : (remainingProgress > 0.2 ? palette.yellow : '#FF4444')
 
   return (
     <View style={{ flex: 1 }}>
@@ -121,12 +99,11 @@ export default function StepItem({
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingBottom: insets.bottom + 40,
+          paddingHorizontal: spacing.lg,
         }}
         showsVerticalScrollIndicator={false}
-        bounces={false}
       >
         <View style={styles.card}>
-          {/* TOP SECTION: Resource + Info */}
           <View style={styles.topSection}>
             {hasResource && isYoutubeResource(step.resource) && (
               <Pressable
@@ -152,11 +129,8 @@ export default function StepItem({
 
             <View style={styles.headerInfo}>
               <View style={styles.titleRow}>
-                <Text style={styles.title} numberOfLines={2}>
+                <Text style={styles.title} numberOfLines={3}>
                   {step.title}
-                </Text>
-                <Text style={styles.stepCount}>
-                  #{index + 1}
                 </Text>
               </View>
 
@@ -165,7 +139,7 @@ export default function StepItem({
                   ? '⏭️ Saltato'
                   : step.completed
                     ? '✅ Completato'
-                    : '⏳ Da completare'}
+                    : `⏳ Step #${index + 1}`}
               </Text>
 
               {hasResource && step.resource && (() => {
@@ -174,23 +148,17 @@ export default function StepItem({
                 return (
                   <Pressable
                     onPress={async () => {
-                      if (isYT) {
-                        setShowPreview(true);
-                      } else {
+                      if (isYT) setShowPreview(true)
+                      else {
                         try {
-                          const supported = await Linking.canOpenURL(res.url);
-                          if (supported) {
-                            await Linking.openURL(res.url);
-                          } else {
-                            // Fallback for non-supported URLs
-                            console.warn("Unable to open URL:", res.url);
-                          }
-                        } catch (e) { console.error(e); }
+                          const supported = await Linking.canOpenURL(res.url)
+                          if (supported) await Linking.openURL(res.url)
+                        } catch (e) { console.error(e) }
                       }
                     }}
                     style={[
                       styles.resourceAction,
-                      { backgroundColor: isYT ? '#FF0000' : colors.accent }
+                      { backgroundColor: isYT ? '#FF0000' : palette.black }
                     ]}
                   >
                     <Text style={styles.resourceActionText}>
@@ -202,7 +170,6 @@ export default function StepItem({
             </View>
           </View>
 
-          {/* DESCRIPTION */}
           {step.description && (
             <View style={styles.descriptionSection}>
               <Text style={styles.description}>
@@ -213,14 +180,10 @@ export default function StepItem({
 
           <View style={styles.divider} />
 
-          {/* BOTTOM SECTION: Deadline + Actions */}
           <View style={styles.bottomSection}>
             <View style={styles.deadlineInfo}>
-              <Text style={styles.deadlineLabel}>Scadenza stimata</Text>
-              <Text style={[
-                styles.deadlineValue,
-                isCurrentStep && !step.completed && { color: progressColor }
-              ]}>
+              <Text style={styles.deadlineLabel}>Deadline stimata</Text>
+              <Text style={[styles.deadlineValue, isCurrentStep && !step.completed && { color: progressColor }]}>
                 {deadlineDate}
               </Text>
               {isCurrentStep && !step.completed && (
@@ -242,23 +205,23 @@ export default function StepItem({
                     onPress={() => onUpdateStatus(step.id, 'skipped')}
                     style={styles.skipButton}
                   >
-                    <Text style={styles.skipButtonIcon}>⏭️</Text>
+                    <Text style={{ fontSize: 18 }}>⏭️</Text>
                   </Pressable>
 
                   <Pressable
                     onPress={() => onUpdateStatus(step.id, 'completed')}
                     style={styles.completeButton}
                   >
-                    <Text style={styles.completeButtonText}>Completa Step</Text>
+                    <Text style={styles.completeButtonText}>COMPLETA</Text>
                   </Pressable>
                 </>
               ) : (
                 <Pressable
                   onPress={() => onUpdateStatus(step.id, 'pending')}
-                  style={[styles.completeButton, { backgroundColor: colors.successBg, borderWidth: 0 }]}
+                  style={[styles.completeButton, { backgroundColor: '#E6F7EC', borderWidth: 0 }]}
                 >
-                  <Text style={[styles.completeButtonText, { color: colors.successText }]}>
-                    Ripristina
+                  <Text style={[styles.completeButtonText, { color: '#1E7F43' }]}>
+                    RIPRISTINA
                   </Text>
                 </Pressable>
               )}
@@ -279,18 +242,17 @@ export default function StepItem({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-    // Shadow for iOS
-    shadowColor: '#000',
+    backgroundColor: palette.white,
+    borderRadius: 32,
+    padding: 24,
+    borderWidth: 2,
+    borderColor: palette.border,
+    shadowColor: palette.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
-    // Elevation for Android
     elevation: 4,
+    marginTop: 20,
   },
   topSection: {
     flexDirection: 'row',
@@ -298,13 +260,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   thumbnailContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: radius.md,
-    backgroundColor: '#f5f5f5',
+    width: 90,
+    height: 90,
+    borderRadius: 20,
+    backgroundColor: palette.lightGray,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: palette.border,
   },
   thumbnail: {
     width: '100%',
@@ -316,12 +280,12 @@ const styles = StyleSheet.create({
   },
   playOverlay: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderTopLeftRadius: 12,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -335,106 +299,100 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '800', // Made even bolder
-    color: '#000',
-    flex: 1,
-  },
-  stepCount: {
-    fontSize: 14,
-    color: '#bbb',
-    marginLeft: 8,
-    fontVariant: ['tabular-nums'],
+    ...typography.body,
+    fontSize: 20,
+    fontWeight: '800',
+    color: palette.black,
   },
   statusText: {
+    ...typography.body,
     fontSize: 13,
-    color: '#999',
-    marginTop: 2,
-    marginBottom: 12,
+    color: palette.gray,
+    marginTop: 4,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   resourceAction: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
     alignSelf: 'flex-start',
     marginTop: 4,
   },
   resourceActionText: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   descriptionSection: {
     marginBottom: spacing.md,
   },
   description: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 20,
+    ...typography.body,
+    fontSize: 15,
+    color: '#444',
+    lineHeight: 22,
   },
   divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: spacing.md,
+    height: 2,
+    backgroundColor: palette.border,
+    marginVertical: spacing.lg,
   },
   bottomSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: spacing.lg,
   },
   deadlineInfo: {
     flex: 1,
   },
   deadlineLabel: {
-    fontSize: 12,
-    color: '#bbb',
-    marginBottom: 2,
+    ...typography.label,
+    fontSize: 11,
+    marginBottom: 4,
   },
   deadlineValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
+    ...typography.body,
+    fontSize: 18,
+    fontWeight: '800',
   },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   completeButton: {
-    backgroundColor: '#000',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: palette.black,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
     borderRadius: 24,
-    minWidth: 120,
+    flex: 1,
     alignItems: 'center',
   },
   completeButtonText: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '900',
     fontSize: 14,
+    letterSpacing: 1,
   },
   skipButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#eee',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: palette.white,
+    borderWidth: 2,
+    borderColor: palette.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  skipButtonIcon: {
-    fontSize: 18,
-  },
   progressBarBg: {
-    height: 4,
-    backgroundColor: '#eee',
-    borderRadius: 2,
-    marginTop: 6,
-    width: '80%',
+    height: 6,
+    backgroundColor: palette.lightGray,
+    borderRadius: 3,
+    marginTop: 10,
+    width: '100%',
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
   },
 })

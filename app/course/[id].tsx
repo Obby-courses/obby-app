@@ -1,16 +1,19 @@
+import { getCourseColor } from '@/constants/courseColors'
 import { supabase } from '@/lib/supabase'
-import { spacing } from '@/lib/theme'
+import { palette, spacing } from '@/lib/theme'
 import {
   useLocalSearchParams,
   useRouter,
 } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
   Modal,
   Pressable,
+  StyleSheet,
   Text,
   View,
 } from 'react-native'
@@ -87,12 +90,14 @@ export default function CourseScreen() {
 
   // Flattened list of ALL items to render in the map
   const [mapItems, setMapItems] = useState<any[]>([])
-
   const [selectedStep, setSelectedStep] = useState<Step | null>(null)
   const [selectedMilestone, setSelectedMilestone] = useState<any | null>(null)
 
+  const [mapReady, setMapReady] = useState(false)
   const initialized = useRef(false)
   const flatListRef = useRef<FlatList<any>>(null)
+
+  const courseColor = courseId ? getCourseColor(courseId) : palette.black
 
   /* ---------------- LOAD ---------------- */
 
@@ -118,15 +123,21 @@ export default function CourseScreen() {
         return !item.completed
       })
 
-      if (firstIncompleteIdx !== -1) {
-        setTimeout(() => {
-          flatListRef.current?.scrollToIndex({
-            index: firstIncompleteIdx,
-            animated: false,
-            viewPosition: 0.33 // 1/3 from the bottom
-          })
-        }, 100)
+      const targetIdx = firstIncompleteIdx === -1 ? 0 : firstIncompleteIdx
+
+      const scrollAndReady = () => {
+        flatListRef.current?.scrollToIndex({
+          index: targetIdx,
+          animated: false,
+          viewPosition: 0.33
+        })
+        setTimeout(() => setMapReady(true), 50)
       }
+
+      // We wait a bit for the FlatList to layout
+      scrollAndReady()
+      setTimeout(scrollAndReady, 100)
+
       initialized.current = true
     }
   }, [mapItems])
@@ -353,6 +364,7 @@ export default function CourseScreen() {
         <MilestoneNode
           milestone={item}
           isLocked={isLocked}
+          courseColor={courseColor}
           onPress={() => {
             if (isLocked) {
               Alert.alert('Step non completati', 'Completa tutti gli step precedenti per sbloccare la Milestone!')
@@ -401,6 +413,7 @@ export default function CourseScreen() {
           isCurrent={isCurrent}
           isPlaceholder={isPlaceholder}
           remainingProgress={remainingProgress}
+          courseColor={courseColor}
           onPress={() => {
             if (!isLocked && !isPlaceholder) setSelectedStep(step)
           }}
@@ -410,28 +423,37 @@ export default function CourseScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f2f2f2' }}>
-      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10, backgroundColor: '#f2f2f2' }}>
+    <View style={{ flex: 1, backgroundColor: courseColor }}>
+      {!mapReady && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.white, zIndex: 100, justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={palette.black} />
+        </View>
+      )}
+
+      <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Pressable onPress={() => router.replace('/')} style={{ width: 40, height: 40, justifyContent: 'center' }}>
-            <Text style={{ fontSize: 24, fontWeight: '300' }}>←</Text>
+          <Pressable onPress={() => router.replace('/')} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: palette.black, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)' }}>
+            <Text style={{ fontSize: 20, fontWeight: '800' }}>←</Text>
           </Pressable>
-          <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center', color: '#000' }}>{courseTitle}</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ flex: 1, marginHorizontal: 15 }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Il tuo percorso</Text>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: palette.black }} numberOfLines={1}>{courseTitle}</Text>
+          </View>
+          <View style={{ width: 44 }} />
         </View>
       </View>
 
       <FlatList
         ref={flatListRef}
         data={mapItems}
-
+        style={{ flex: 1, opacity: mapReady ? 1 : 0 }}
         inverted
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: 20, // Space at the top when reached (inverted)
-          paddingTop: 40     // Space at the bottom before/after header
+          paddingBottom: 20,
+          paddingTop: 40
         }}
-        ListHeaderComponent={<View style={{ height: height / 3.5 }} />}
+        ListHeaderComponent={<View style={{ height: height / 4 }} />}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         onScrollToIndexFailed={(info) => {
@@ -451,9 +473,9 @@ export default function CourseScreen() {
       >
         <View style={{ flex: 1, backgroundColor: '#fff' }}>
           <View style={{ flex: 1, marginTop: spacing.md }}>
-            <View style={{ padding: spacing.md, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
-              <Pressable onPress={() => setSelectedStep(null)} style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 20 }}>
-                <Text style={{ fontSize: 16, color: '#000', fontWeight: 'bold' }}>✕</Text>
+            <View style={{ padding: spacing.lg, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
+              <Pressable onPress={() => { setSelectedStep(null); setSelectedMilestone(null); }} style={{ width: 40, height: 40, backgroundColor: palette.lightGray, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: palette.border }}>
+                <Text style={{ fontSize: 16, color: palette.black, fontWeight: '900' }}>✕</Text>
               </Pressable>
             </View>
 
@@ -471,6 +493,7 @@ export default function CourseScreen() {
                 courseCreatedAt={courseCreatedAt}
                 firstIncompleteIndex={steps.findIndex(s => !s.completed)}
                 referenceDate={referenceDate}
+                courseColor={courseColor}
               />
             )}
           </View>
@@ -508,6 +531,7 @@ export default function CourseScreen() {
                     loadStepsAndMilestones()
                     if (shouldClose) setSelectedMilestone(null)
                   }}
+                  courseColor={courseColor}
                 />
               )
             })()}

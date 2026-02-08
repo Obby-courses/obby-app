@@ -1,4 +1,5 @@
 import WeeklyCalendar from '@/components/WeeklyCalendar'
+import { getCourseColor } from '@/constants/courseColors'
 import { useFocusEffect, useRouter } from 'expo-router'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
@@ -13,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { colors, radius, spacing, typography } from '../lib/theme'
+import { palette, radius, spacing, typography } from '../lib/theme'
 
 /* =======================
    TIPI
@@ -53,7 +54,7 @@ export default function Index() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const { user, profile, loading: authLoading, signOut } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const router = useRouter()
 
   // Carica i corsi ogni volta che la schermata torna in primo piano
@@ -128,7 +129,7 @@ export default function Index() {
   }, [])
 
   const tasksByDate = useMemo(() => {
-    const map: Record<string, number> = {}
+    const map: Record<string, string[]> = {}
 
     courses.forEach((course) => {
       const allSteps: Step[] = []
@@ -157,6 +158,8 @@ export default function Index() {
       const firstIncompleteIndex = allSteps.findIndex((s) => !s.completed)
       if (firstIncompleteIndex === -1) return
 
+      const courseColor = getCourseColor(course.id)
+
       allSteps.forEach((step, index) => {
         if (!step.completed) {
           const relativeIndex = index - firstIncompleteIndex
@@ -168,7 +171,9 @@ export default function Index() {
           const month = String(deadline.getMonth() + 1).padStart(2, '0')
           const day = String(deadline.getDate()).padStart(2, '0')
           const dateKey = `${year}-${month}-${day}`
-          map[dateKey] = (map[dateKey] || 0) + 1
+
+          if (!map[dateKey]) map[dateKey] = []
+          map[dateKey].push(courseColor)
         }
       })
     })
@@ -181,46 +186,41 @@ export default function Index() {
     const steps = activePhase?.steps || []
     const totalSteps = steps.length
     const completedSteps = steps.filter((s) => s.completed).length
-    const progress = totalSteps === 0 ? 0 : completedSteps / totalSteps
+    const courseColor = getCourseColor(item.id)
 
     return (
       <Pressable
-        style={styles.course}
+        style={[styles.course, { backgroundColor: courseColor }]}
         onPress={() => router.push(`/course/${item.id}`)}
       >
-        <View style={styles.courseHeaderRow}>
-          <Text style={styles.courseTitle} numberOfLines={1}>{item.title}</Text>
+        <View style={styles.courseContent}>
+          <View style={{ flex: 1, marginRight: 16 }}>
+            <Text style={styles.courseTitle}>{item.title}</Text>
+            {item.description && (
+              <Text style={styles.courseDescription} numberOfLines={2}>
+                {item.description}
+              </Text>
+            )}
+            <View style={styles.progressRow}>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${(completedSteps / totalSteps) * 100}%` }]} />
+              </View>
+              <Text style={styles.progressValue}>
+                {completedSteps}/{totalSteps}
+              </Text>
+            </View>
+          </View>
 
           <Pressable
             onPress={(e) => {
-              e.stopPropagation() // Impedisce l'apertura del corso
+              e.stopPropagation()
               setCourseToDelete(item)
             }}
-            hitSlop={10}
+            hitSlop={15}
             style={styles.deleteIconBtn}
           >
-            <Text style={{ fontSize: 18, color: colors.mutedText }}>🗑️</Text>
+            <Text style={{ fontSize: 18, opacity: 0.4, fontWeight: '900' }}>✕</Text>
           </Pressable>
-        </View>
-
-        {!!activePhase && (
-          <Text style={styles.phaseTitle}>
-            Fase attiva · {activePhase.title}
-          </Text>
-        )}
-
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBarBackground}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.progressText}>
-            {completedSteps}/{totalSteps} step completati
-          </Text>
         </View>
       </Pressable>
     )
@@ -232,57 +232,62 @@ export default function Index() {
   if (authLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={palette.black} />
       </View>
     )
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>
-            Ciao, {profile?.full_name || (user?.email?.split('@')[0])}!
-          </Text>
-          <Text style={styles.subGreeting}>I tuoi corsi</Text>
-        </View>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <FlatList
+        data={courses}
+        keyExtractor={(item) => item.id}
+        renderItem={renderCourse}
+        ListHeaderComponent={
+          <View style={{ paddingTop: spacing.sm }}>
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.dateLabel}>
+                  {new Date().toLocaleDateString('it-IT', { month: 'long', day: 'numeric' })}
+                </Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.greeting}>
+                    {profile?.full_name?.split(' ')[0] || (user?.email?.split('@')[0])}
+                  </Text>
+                  <Pressable
+                    onPress={() => router.push('/new-course')}
+                    style={styles.addButton}
+                  >
+                    <Text style={styles.addButtonText}>+</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
-            onPress={() => router.push('/new-course')}
-            style={styles.addButton}
-          >
-            <Text style={styles.addButtonText}>+</Text>
-          </Pressable>
-        </View>
-      </View>
+            <WeeklyCalendar tasksByDate={tasksByDate} />
 
-      <View style={{ paddingHorizontal: spacing.lg }}>
-        <WeeklyCalendar tasksByDate={tasksByDate} />
-      </View>
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={styles.sectionHeader}>I tuoi percorsi</Text>
+              {coursesLoading && (
+                <ActivityIndicator style={{ marginTop: 20 }} size="small" color={palette.gray} />
+              )}
+            </View>
+          </View>
+        }
+        contentContainerStyle={[
+          { paddingBottom: 120, paddingHorizontal: spacing.lg },
+          courses.length === 0 && styles.emptyList,
+        ]}
+        ListEmptyComponent={
+          !coursesLoading ? (
+            <Text style={styles.emptyText}>Nessun percorso disponibile</Text>
+          ) : null
+        }
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      />
 
-      <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
-        {coursesLoading ? (
-          <ActivityIndicator style={{ marginTop: 40 }} size="small" color={colors.mutedText} />
-        ) : (
-          <FlatList
-            data={courses}
-            keyExtractor={(item) => item.id}
-            renderItem={renderCourse}
-            contentContainerStyle={[
-              { paddingTop: spacing.md, paddingBottom: 100 },
-              courses.length === 0 && styles.emptyList,
-            ]}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>Nessun corso disponibile</Text>
-            }
-            bounces={false}
-            alwaysBounceVertical={false}
-          />
-        )}
-      </View>
-
-      {/* MODALE DI CONFERMA (POOP) */}
+      {/* MODALE DI CONFERMA */}
       <Modal
         visible={!!courseToDelete}
         transparent={true}
@@ -295,13 +300,13 @@ export default function Index() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {deleteError ? "Errore" : "Elimina corso?"}
+              {deleteError ? "Errore" : "Elimina?"}
             </Text>
 
-            <Text style={[styles.modalText, deleteError ? { color: '#f00' } : null]}>
+            <Text style={styles.modalText}>
               {deleteError
                 ? deleteError
-                : `Sei sicuro di voler eliminare "${courseToDelete?.title}"? L'azione è definitiva.`}
+                : `Eliminare "${courseToDelete?.title}"?`}
             </Text>
 
             <View style={styles.modalButtons}>
@@ -313,7 +318,7 @@ export default function Index() {
                 }}
                 disabled={isDeleting}
               >
-                <Text style={styles.modalBtnTextCancel}>Annulla</Text>
+                <Text style={styles.modalBtnTextCancel}>No</Text>
               </Pressable>
 
               <Pressable
@@ -324,114 +329,137 @@ export default function Index() {
                 {isDeleting ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalBtnTextDelete}>Elimina</Text>
+                  <Text style={styles.modalBtnTextDelete}>Sì</Text>
                 )}
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </View >
   )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: palette.white,
   },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
+    paddingTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  dateLabel: {
+    ...typography.label,
+    marginBottom: 4,
+  },
+  titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    alignItems: 'center',
+  },
+  greeting: {
+    ...typography.title,
+    fontSize: 32,
   },
   addButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: colors.primaryButton,
-    borderRadius: radius.md,
+    width: 44,
+    height: 44,
+    backgroundColor: 'transparent',
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: palette.black,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addButtonText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '300',
+    color: palette.black,
+    fontSize: 24,
+    fontWeight: '400',
+    marginTop: -2,
   },
-  title: {
-    ...typography.title,
-  },
-  greeting: {
-    ...typography.title,
-    fontSize: 22,
-  },
-  subGreeting: {
-    ...typography.small,
-  },
-  subtitle: {
-    ...typography.small,
-  },
-  profileButton: {
-    width: 48,
-    height: 48,
+  tabSelector: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 10,
+    marginBottom: spacing.lg,
+  },
+  tabItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  tabItemActive: {
+    backgroundColor: palette.black,
+  },
+  tabText: {
+    ...typography.body,
+    fontSize: 14,
+    color: palette.gray,
+  },
+  tabTextActive: {
+    color: palette.white,
+  },
+  sectionHeader: {
+    ...typography.header,
+    marginBottom: spacing.md,
   },
   course: {
-    padding: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: '#eee',
+    paddingVertical: 28,
+    paddingHorizontal: 28,
+    borderRadius: 44,
+    marginBottom: 16,
   },
-  courseHeaderRow: {
+  courseContent: {
+    flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
+    alignItems: 'flex-start',
   },
   courseTitle: {
+    ...typography.title,
+    fontSize: 26,
+    lineHeight: 30,
+    color: palette.black,
+    marginBottom: 8,
+  },
+  courseDescription: {
     ...typography.body,
-    fontWeight: '700',
+    fontSize: 14,
+    color: palette.black,
+    opacity: 0.7,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  progressBarBg: {
     flex: 1,
-  },
-  deleteIconBtn: {
-    padding: 4,
-  },
-  courseDesc: {
-    ...typography.small,
-    marginBottom: spacing.sm,
-  },
-  phaseTitle: {
-    fontSize: 13,
-    color: colors.mutedText,
-    marginBottom: spacing.sm,
-  },
-  progressContainer: {
-    marginTop: spacing.sm,
-  },
-  progressBarBackground: {
-    height: 6,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 3,
+    height: 8,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 4,
     overflow: 'hidden',
   },
   progressBarFill: {
-    height: 6,
-    backgroundColor: colors.accent,
+    height: '100%',
+    backgroundColor: palette.black,
+    borderRadius: 4,
   },
-  progressText: {
-    marginTop: spacing.xs,
-    fontSize: 12,
-    color: colors.textSecondary,
+  progressValue: {
+    ...typography.body,
+    fontSize: 14,
+    fontWeight: '900',
+    color: palette.black,
+  },
+  deleteIconBtn: {
+    marginTop: 6,
+    marginLeft: 15,
   },
   emptyList: {
     flex: 1,
@@ -440,58 +468,57 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: palette.gray,
   },
-  // STILI MODALE
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: palette.white,
     borderRadius: radius.md,
     padding: 24,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 300,
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
+    ...typography.body,
+    fontWeight: '800',
+    marginBottom: 8,
   },
   modalText: {
-    fontSize: 15,
-    color: '#444',
+    ...typography.body,
+    fontSize: 16,
+    textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 20,
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: 12,
   },
   modalBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: radius.sm,
-    minWidth: 90,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    minWidth: 100,
     alignItems: 'center',
   },
   modalBtnCancel: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: palette.lightGray,
   },
   modalBtnDelete: {
-    backgroundColor: '#ff4444',
+    backgroundColor: palette.black,
   },
   modalBtnTextCancel: {
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: palette.black,
   },
   modalBtnTextDelete: {
-    fontWeight: '600',
-    color: '#fff',
+    fontWeight: '700',
+    color: palette.white,
   },
 })

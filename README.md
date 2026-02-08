@@ -1,50 +1,79 @@
-# Welcome to your Expo app 👋
+# Obby 🚀
+### Impara qualsiasi cosa, un passo alla volta.
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Obby** è la tua piattaforma di apprendimento personalizzata che trasforma obiettivi complessi in percorsi chiari, visivi e coinvolgenti. Grazie all'intelligenza artificiale, puoi generare corsi su misura per qualsiasi argomento e seguirli attraverso una mappa interattiva ed immersiva.
 
-## Get started
+---
 
-1. Install dependencies
+## ✨ Caratteristiche Principali (v1.1.0)
 
+- **🤖 AI Course Builder**: Descrivi cosa vuoi imparare e lascia che l'AI generi un percorso completo diviso in fasi, step e milestone.
+- **🎨 Design System Premium**: Un'interfaccia moderna "light-only" curata nei minimi dettagli, con una palette colori vibrante e tipografia audace.
+- **🗺️ Mappe Immersive**: Ogni corso ha la sua identità cromatica. Esplora il tuo percorso attraverso una mappa interattiva che si adatta dinamicamente allo stile del corso.
+- **📅 Smart Calendar**: Visualizza le tue scadenze con un calendario integrato che evidenzia le attività future con i colori corrispondenti ai tuoi corsi.
+- **📊 Tracking del Progresso**: Monitora il tuo avanzamento con barre di caricamento dinamiche e indicatori di stato chiari per ogni step.
+- **🔐 Cloud Sync**: I tuoi percorsi sono sempre con te grazie all'integrazione robusta con Supabase.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: [Expo](https://expo.dev/) (React Native)
+- **Routing**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based)
+- **Database & Auth**: [Supabase](https://supabase.com/)
+- **Gestures**: [React Native Gesture Handler](https://software-mansion.github.io/react-native-gesture-handler/)
+- **Animazioni**: [React Native Reanimated](https://software-mansion.github.io/react-native-reanimated/)
+- **SVA Components**: [React Native SVG](https://github.com/software-mansion/react-native-svg)
+
+---
+
+## 🚀 Come Iniziare
+
+1. **Clona il repository**
+   ```bash
+   git clone https://github.com/tuo-username/obby-app.git
+   ```
+
+2. **Installa le dipendenze**
    ```bash
    npm install
    ```
 
-2. Start the app
+3. **Configura Supabase**
+   Crea un file `.env` nella root del progetto con le tue credenziali:
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=tua_url_supabase
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=tua_key_anonima
+   ```
 
+4. **Avvia l'app**
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 📋 Changelog v1.1.0
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **New Theme**: Introduzione completa del tema Premium Light-Only.
+- **Visual Improvements**: Card dei corsi espanse con descrizioni e barre di progresso.
+- **Calendar Update**: Calendario settimanale/mensile integrato direttamente nella Home con pallini colorati dinamici.
+- **Immersive Maps**: Sfondo della mappa del corso adattivo basato sul colore del percorso.
+- **UX Fixes**: Eliminazione del "salto" visivo all'apertura delle mappe e rimozione di elementi di navigazione ridondanti.
+- **Cleanup**: Rimozione completa del supporto alla modalità scura per una coerenza visiva assoluta.
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 🤝 Contribuire
 
-```bash
-npm run reset-project
-```
+Le contribuzioni sono benvenute! Senti libero di aprire Issue o Pull Request per migliorare Obby.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 📄 Licenza
 
-To learn more about developing your project with Expo, look at the following resources:
+Distribuito sotto Licenza MIT. Vedi `LICENSE` per maggiori informazioni.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Creato con ❤️ per chi non smette mai di imparare.

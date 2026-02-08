@@ -3,51 +3,48 @@ import { useRouter, useSegments } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing } from '../lib/theme';
+import { palette } from '../lib/theme';
 
 export default function TabBar() {
     const router = useRouter();
     const segments = useSegments();
     const insets = useSafeAreaInsets();
 
-    // Determina se siamo nella home, nel profilo o in un corso
     const isProfile = segments.includes('profile');
-    const isCourse = segments.includes('course') && !segments.includes('phase-completed');
-    const isHome = segments.length === 0;
+    const isHome = (!segments.length || segments[0] === '(tabs)' || segments[0] === '') && !isProfile;
 
-    // Se siamo nel login, nella creazione o nella fase completata, non mostriamo la TabBar
     if (
         segments.includes('login') ||
         segments.includes('new-course') ||
-        segments.includes('phase-completed')
+        segments.includes('phase-completed') ||
+        segments.includes('course')
     ) return null;
 
-
-
-
     return (
-        <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 15) }]}>
             <View style={styles.content}>
                 <TouchableOpacity
                     style={styles.tab}
                     onPress={() => router.replace('/')}
+                    activeOpacity={0.7}
                 >
                     <Ionicons
-                        name={isHome && !isProfile ? "home" : "home-outline"}
+                        name={isHome ? "home" : "home-outline"}
                         size={24}
-                        color={isHome && !isProfile ? colors.primaryButton : colors.mutedText}
+                        color={isHome ? palette.black : palette.gray}
                     />
-                    <Text style={[styles.label, isHome && !isProfile && styles.activeLabel]}>Home</Text>
+                    <Text style={[styles.label, isHome && styles.activeLabel]}>Percorsi</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     style={styles.tab}
                     onPress={() => router.replace('/profile')}
+                    activeOpacity={0.7}
                 >
                     <Ionicons
                         name={isProfile ? "person" : "person-outline"}
                         size={24}
-                        color={isProfile ? colors.primaryButton : colors.mutedText}
+                        color={isProfile ? palette.black : palette.gray}
                     />
                     <Text style={[styles.label, isProfile && styles.activeLabel]}>Profilo</Text>
                 </TouchableOpacity>
@@ -59,13 +56,19 @@ export default function TabBar() {
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-        paddingTop: spacing.sm,
+        bottom: 20,
+        left: 20,
+        right: 20,
+        backgroundColor: palette.white,
+        borderRadius: 40,
+        paddingTop: 15,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.1,
+        shadowRadius: 20,
+        elevation: 10,
+        borderWidth: 2,
+        borderColor: palette.border,
     },
     content: {
         flexDirection: 'row',
@@ -74,17 +77,18 @@ const styles = StyleSheet.create({
     },
     tab: {
         alignItems: 'center',
-        paddingVertical: spacing.xs,
+        paddingVertical: 4,
         flex: 1,
     },
     label: {
-        fontSize: 10,
+        fontSize: 12,
         marginTop: 4,
-        color: colors.mutedText,
-        fontWeight: '500',
+        color: palette.gray,
+        fontWeight: '600',
     },
     activeLabel: {
-        color: colors.primaryButton,
-        fontWeight: '700',
+        color: palette.black,
+        fontWeight: '800',
     },
 });
+

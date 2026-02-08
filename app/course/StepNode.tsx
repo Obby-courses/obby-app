@@ -1,4 +1,4 @@
-import { colors } from '@/lib/theme'
+import { palette } from '@/lib/theme'
 import React from 'react'
 import {
     Pressable,
@@ -23,6 +23,7 @@ type StepNodeProps = {
     isPlaceholder?: boolean
     remainingProgress?: number // 0 to 1
     onPress: () => void
+    courseColor?: string
 }
 
 export default function StepNode({
@@ -33,87 +34,57 @@ export default function StepNode({
     isPlaceholder = false,
     remainingProgress = 1,
     onPress,
+    courseColor = palette.black,
 }: StepNodeProps) {
     const isCompleted = step.completed || step.status === 'skipped'
 
     // Styles based on state
-    let backgroundColor = '#e0e0e0' // Locked
-    let borderColor = '#cccccc'
-    let numberColor = '#999999'
+    let backgroundColor = 'rgba(0,0,0,0.05)'
+    let textColor = 'rgba(0,0,0,0.3)'
+    let borderColor = 'transparent'
 
     if (isCompleted) {
-        backgroundColor = colors.accent
-        borderColor = colors.accent
-        numberColor = '#ffffff'
+        backgroundColor = palette.white
+        textColor = palette.black
     } else if (isCurrent) {
-        backgroundColor = '#ffffff'
-        borderColor = 'transparent' // We use the SVG for the border
-        numberColor = colors.accent
+        backgroundColor = palette.white
+        textColor = palette.black
+        borderColor = palette.black
     } else if (isPlaceholder) {
-        backgroundColor = '#f9f9f9'
-        borderColor = '#e0e0e0'
-        numberColor = '#cccccc'
+        backgroundColor = 'rgba(255,255,255,0.1)'
+        textColor = 'rgba(0,0,0,0.2)'
     } else if (!isLocked) {
-        backgroundColor = '#ffffff'
-        borderColor = colors.accent
-        numberColor = colors.accent
-    }
-
-    if (step.status === 'skipped') {
-        backgroundColor = '#f0f0f0'
-        borderColor = '#ccc'
-        numberColor = '#999'
+        backgroundColor = 'rgba(255,255,255,0.2)'
+        textColor = palette.black
+        borderColor = 'rgba(0,0,0,0.1)'
     }
 
     // Circular Progress Params
-    const size = 70;
-    const strokeWidth = 6;
+    const size = 80;
+    const strokeWidth = 5;
     const center = size / 2;
-    const radius = size / 2 - strokeWidth / 2;
+    const radius = size / 2 - strokeWidth;
     const circumference = radius * 2 * Math.PI;
     const strokeDashoffset = circumference - remainingProgress * circumference;
-
-    // Color Interpolation (Green -> Yellow -> Red)
-    const getProgressColor = (p: number) => {
-        if (p > 0.5) {
-            // green to yellow
-            const ratio = (p - 0.5) * 2;
-            const r = Math.round(250 * (1 - ratio) + 74 * ratio);
-            const g = Math.round(204 * (1 - ratio) + 222 * ratio);
-            const b = Math.round(21 * (1 - ratio) + 128 * ratio);
-            return `rgb(${r},${g},${b})`;
-        } else {
-            // yellow to red
-            const ratio = p * 2;
-            const r = Math.round(248 * (1 - ratio) + 250 * ratio);
-            const g = Math.round(113 * (1 - ratio) + 204 * ratio);
-            const b = Math.round(113 * (1 - ratio) + 21 * ratio);
-            return `rgb(${r},${g},${b})`;
-        }
-    };
-
-    const progressColor = getProgressColor(remainingProgress);
 
     return (
         <View style={styles.container}>
             {isCurrent && (
                 <View style={styles.svgWrapper}>
                     <Svg width={size} height={size}>
-                        {/* Background track */}
                         <Circle
                             cx={center}
                             cy={center}
                             r={radius}
-                            stroke="#e5e7eb"
+                            stroke={palette.lightGray}
                             strokeWidth={strokeWidth}
                             fill="none"
                         />
-                        {/* Progress ring */}
                         <Circle
                             cx={center}
                             cy={center}
                             r={radius}
-                            stroke={progressColor}
+                            stroke={palette.black}
                             strokeWidth={strokeWidth}
                             strokeDasharray={circumference}
                             strokeDashoffset={strokeDashoffset}
@@ -132,18 +103,17 @@ export default function StepNode({
                     styles.node,
                     {
                         backgroundColor,
-                        borderColor: isCurrent ? 'transparent' : borderColor,
+                        borderColor: isPlaceholder ? '#eee' : borderColor,
                         borderStyle: isPlaceholder ? 'dashed' : 'solid',
-                        opacity: isLocked && !isPlaceholder ? 0.6 : 1,
-                        transform: [{ scale: (pressed && !isPlaceholder) ? 0.95 : 1 }],
-                        elevation: isCurrent ? 8 : (isPlaceholder ? 0 : 2),
-                        shadowOpacity: isCurrent ? 0.3 : (isPlaceholder ? 0 : 0.1),
+                        opacity: isLocked && !isPlaceholder ? 0.5 : 1,
+                        transform: [{ scale: (pressed && !isPlaceholder) ? 0.92 : 1 }],
+                        shadowOpacity: isCurrent ? 0.2 : 0,
                     },
                 ]}
             >
                 <Text style={[
                     styles.numberText,
-                    { color: numberColor }
+                    { color: textColor }
                 ]}>
                     {isPlaceholder ? '?' : step.global_index}
                 </Text>
@@ -156,29 +126,30 @@ const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
         justifyContent: 'center',
-        width: 80,
-        height: 80, // Increased to fit SVG
-        marginVertical: 10,
+        width: 100,
+        height: 100,
+        marginVertical: 15,
     },
     svgWrapper: {
         position: 'absolute',
         zIndex: 1,
     },
     node: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        borderWidth: 4,
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        borderWidth: 3,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
+        backgroundColor: palette.white,
+        shadowColor: palette.black,
         shadowOffset: { width: 0, height: 4 },
-        shadowRadius: 4,
-        borderBottomWidth: 8, // 3D effect
+        shadowRadius: 10,
         zIndex: 2,
     },
     numberText: {
-        fontSize: 22,
+        fontSize: 28,
         fontWeight: '900',
     },
 })
+

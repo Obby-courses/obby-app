@@ -1,7 +1,7 @@
+import { LoadingStatus, loadingMessages } from '@/lib/loadingMessages'
+import { palette, spacing, typography } from '@/lib/theme'
 import React from 'react'
-import { View, Text } from 'react-native'
-import { loadingMessages, LoadingStatus } from '@/lib/loadingMessages'
-import { colors, spacing, typography } from '@/lib/theme'
+import { Text, View } from 'react-native'
 
 type Props = {
   visible: boolean
@@ -9,7 +9,6 @@ type Props = {
 }
 
 export default function LoadingOverlay({ visible, status }: Props) {
-  // Se non è visibile, restituiamo null (ReactNode valido)
   if (!visible) return null
 
   const message = loadingMessages[status]
@@ -18,19 +17,22 @@ export default function LoadingOverlay({ visible, status }: Props) {
     <View
       style={{
         position: 'absolute',
-        inset: 0,
-        backgroundColor: colors.background,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: palette.white,
         alignItems: 'center',
         justifyContent: 'center',
         padding: spacing.lg,
         zIndex: 999,
       }}
     >
-      <Text style={{ fontSize: 48, marginBottom: spacing.md }}>
+      <Text style={{ fontSize: 64, marginBottom: spacing.lg }}>
         {message.emoji}
       </Text>
 
-      <Text style={typography.title}>
+      <Text style={{ ...typography.title, textAlign: 'center' }}>
         {message.title}
       </Text>
 
@@ -38,9 +40,10 @@ export default function LoadingOverlay({ visible, status }: Props) {
         <Text
           style={{
             ...typography.body,
-            color: colors.textSecondary,
-            marginTop: spacing.sm,
+            color: palette.gray,
+            marginTop: spacing.md,
             textAlign: 'center',
+            fontWeight: '600',
           }}
         >
           {message.subtitle}
