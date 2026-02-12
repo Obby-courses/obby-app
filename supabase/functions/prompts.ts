@@ -223,13 +223,13 @@ Your task is to convert step details into the single best YouTube search query s
 RULES:
 - Output ONLY the search query string.
 - NO quotes, NO explanations, NO intro/outro.
-- Maximum 6-8 words.
-- Use a mix of technical and educational terms.
-- **LANGUAGE**: Detect the language of the provided context (Course/Step) and generate the search query optimized for that language (e.g., use "lezione/tutorial" if Italian, "lesson/tutorial" if English).
-- CRITICAL: Anchor the query to the specific domain context. If the course is about "Marketing", the search query MUST NOT include terms related to "Finance" or "Trading" even if keywords like "candele" are present.
-- INSTRUMENT RULE: Distinguish between "LEARNING TO PLAY" and "MAINTENANCE/SETUP". If the step is about playing, positioning, or technique, explicitly EXCLUDE terms like "regolazione", "setup", "repair", "liuteria", "action", "truss rod".
-- FOCUS: Prioritize terms related to "postura", "corretta posizione", "come fare" for technique-heavy steps.
-- Use the Course Description to determine the correct technical domain.
+- Maximum 5-6 words.
+- **USE BROAD, COMMON TERMS**: Use words like "Tutorial", "Guide", "Lesson", "Course" instead of specific technical micro-details.
+- **AVOID OVER-SPECIFICITY**: Do not include too many adjectives. "Guitar chords tutorial" is better than "Guitar chords for beginners with small hands tutorial".
+- **LANGUAGE**: Detect the language of the provided context (Course/Step) and generate the search query optimized for that language.
+- CRITICAL: Anchor the query to the specific domain context (Course Description).
+
+GOAL: Find a video that covers the *general topic* of the step, not necessarily every single minute detail.
 `;
 
 export const USER_RESOURCE_QUERY_PROMPT = ({
@@ -263,11 +263,16 @@ export const RESOURCE_FILTER_PROMPT = `
 You are an expert educational content curator.
 Your goal is to select the BEST video from a list of candidates to teach a specific "Step".
 
+CRITICAL SELECTION CRITERIA:
+1. **COMPREHENSIVENESS**: Favor videos that cover the *entire* topic broadly over videos that only cover one tiny aspect.
+2. **MATCH**: The video must match the *Core Intent* of the step.
+3. **QUALITY**: Avoid clickbait or low-quality content.
+
 RULES:
 - You will receive a Step Context and a list of Video Candidates.
 - Analyze the video title and description.
 - Select the one that matches the Step INTENT best.
-- Avoid videos that seem too generic, irrelevant, or "clickbait" if better options exist.
+- If a video seems to cover MORE than just the step (e.g., a full guide), PREFER IT. It's better to have too much info than too little.
 - Return valid JSON with the selected "videoId" and a "reason" string.
 
 Schema:
@@ -348,33 +353,29 @@ Return JSON with is_complete and reasoning.
 export const STEP_INTENT_GENERATOR = `
 You are an expert learning designer specialized in creating micro-progressions for skill acquisition, optimized for finding educational videos on YouTube.
 
-Your task is to identify the NEXT LOGICAL STEP in a learning phase, following strict pedagogical principles while ensuring the topic is broad enough to match a real-world video.
+Your task is to identify the NEXT LOGICAL STEP in a learning phase, following strict pedagogical principles.
+
+CRITICAL INSTRUCTION - AVOID MICRO-STEPS:
+- **DO NOT** generate steps for small refinements like "Improve X", "Refine Y", "Perfect Z".
+- If a topic has been covered in a previous step, ASSUME IT IS DONE. Do not create a new step just to "practice" or "review" it.
+- **MOVE FORWARD**: Always jump to the next *significant* missing concept needed to complete the phase.
+- If the Phase Goal is already fully covered by existing steps, your intent should be: "PHASE_COMPLETED".
 
 LEARNING PROGRESSION & VIDEO COHERENCE FRAMEWORK:
 
-1. **PREREQUISITE CHAIN**:
-   - Before moving to advanced tasks, verify if foundational prerequisites are missing (physical setup, spatial orientation, basic terminology).
-   - Priority Order: 
-     a) Physical/Practical Setup (e.g., posture, holding instrument, environment setup)
-     b) Spatial/Anatomical Orientation (e.g., parts of the instrument, layout of a tool)
-     c) Single Core Skills (e.g., first chord, first line of code, first brush stroke)
-     d) Combination & Fluency
-
-2. **VIDEO-SIZED TOPICS (CRITICAL)**:
+1. **VIDEO-SIZED TOPICS (CRITICAL)**:
    - Identify a "self-contained" topic that a creator would reasonably make a single 5-15 min video about.
-   - Avoid steps that are too narrow/micro.
-   - ✅ Good: "Posture and Correct Grip for Guitar" (Coherent video topic)
-   - ❌ Bad: "How to position the left thumb" (Too narrow, usually part of a better video)
+   - Favor "Complete Guide to X" over "How to do part 1 of X".
+   - **MERGE** small related sub-skills into one single intent (e.g., combine "Stance", "Grip", and "Swing" into "Fundamentals of Swing").
 
-3. **INCREMENTAL COMPLEXITY**:
-   - Each step should add one major new concept or skill.
-   - The intent should bridge what the user knows with what they need to do next.
+2. **PREREQUISITE CHAIN**:
+   - Check what is missing to reach the *Phase Description*.
+   - If the user has already learned the basics in Step 1, do NOT create Step 2 for "Advanced details of basics". Move immediately to the *application* or *next component*.
 
 RULES:
-- Analyze the phase description and identify the FINAL GOAL.
-- Break down the goal into prerequisite blocks.
-- Generate intent for the MOST FOUNDATIONAL missing block.
-- The intent must be 1-2 sentences max, specific, actionable, and "video-ready".
+- Analyze \`existingSteps\` and \`phaseDescription\`.
+- If \`existingSteps\` already cover the core of \`phaseDescription\`, return "PHASE_COMPLETED" as intent.
+- Otherwise, identify the next *distinct* topic.
 - **LANGUAGE**: Detect the language of the context and respond EXCLUSIVELY in that language.
 
 Schema:
@@ -382,8 +383,6 @@ Schema:
   "intent": string,
   "search_keywords": string
 }
-
-The search_keywords must be the single best string to find exactly that "video-sized" educational content on YouTube.
 `;
 
 export const USER_STEP_INTENT_PROMPT = ({
@@ -425,12 +424,14 @@ You are an AI learning designer creating a specific step based on an available v
 Your task is to:
 1. Analyze the step intent (what we wanted to teach)
 2. Analyze the video resource (title, description)
-3. Create a step that bridges the intent with what the video actually offers
+3. Check the "EXISTING STEPS" to see what has already been covered
+4. Create a step that bridges the intent with what the video actually offers, WITHOUT duplicating what is already in existing steps.
 
 RULES:
 - The step title should be specific and actionable
 - The step description should explain what the learner will gain from this video
-- If the video doesn't perfectly match the intent, adapt the step to what the video CAN teach
+- If the video covers multiple topics, FOCUS ONLY on the part that matches the "intent" and is NOT already covered by existing steps.
+- If the video covers things already in previous steps, ignore them in the description.
 - Keep it concise and focused
 - **LANGUAGE**: Detect the language of the provided context and respond EXCLUSIVELY in that same language.
 
@@ -445,14 +446,19 @@ export const USER_RESOURCE_BASED_STEP_PROMPT = ({
   intent,
   videoTitle,
   videoDescription,
-  phaseTitle
+  phaseTitle,
+  existingSteps
 }: {
   intent: string
   videoTitle: string
   videoDescription: string
   phaseTitle: string
+  existingSteps: Array<{ title: string; description: string }>
 }) => `
-STEP INTENT:
+EXISTING STEPS (ALREADY LEARNED):
+${existingSteps.length === 0 ? '(None yet)' : existingSteps.map((s, i) => `${i + 1}. ${s.title} (Desc: ${s.description})`).join('\n')}
+
+STEP INTENT (NEW GOAL):
 ${intent}
 
 PHASE CONTEXT:
@@ -463,7 +469,8 @@ Title: ${videoTitle}
 Description: ${videoDescription}
 
 TASK:
-Create a step (title + description) that uses this video to fulfill the intent.
+Create a NEW step (title + description) that uses this video to fulfill the intent.
+IMPORTANT: Do NOT repeat content from "EXISTING STEPS". Focus only on the NEW value this video adds for the "STEP INTENT".
 Return JSON with title and description.
 `;
 

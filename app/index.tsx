@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { palette, radius, spacing, typography } from '../lib/theme'
+import { colors, palette, radius, spacing, typography } from '../lib/theme'
 
 /* =======================
    TIPI
@@ -232,7 +232,7 @@ export default function Index() {
   if (authLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={palette.black} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     )
   }
@@ -269,18 +269,27 @@ export default function Index() {
             <View style={{ marginTop: spacing.md }}>
               <Text style={styles.sectionHeader}>I tuoi percorsi</Text>
               {coursesLoading && (
-                <ActivityIndicator style={{ marginTop: 20 }} size="small" color={palette.gray} />
+                <ActivityIndicator style={{ marginBottom: spacing.md }} size="small" color={colors.mutedText} />
               )}
             </View>
           </View>
         }
-        contentContainerStyle={[
-          { paddingBottom: 120, paddingHorizontal: spacing.lg },
-          courses.length === 0 && styles.emptyList,
-        ]}
+        contentContainerStyle={{
+          paddingBottom: 120,
+          paddingHorizontal: spacing.md, // Unified spacing
+          flexGrow: 1, // Allows ListEmptyComponent to fill space if needed
+        }}
         ListEmptyComponent={
           !coursesLoading ? (
-            <Text style={styles.emptyText}>Nessun percorso disponibile</Text>
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Inizia il tuo primo percorso</Text>
+              <Pressable
+                onPress={() => router.push('/new-course')}
+                style={styles.emptyAction}
+              >
+                <Text style={styles.emptyActionText}>Crea un corso</Text>
+              </Pressable>
+            </View>
           ) : null
         }
         showsVerticalScrollIndicator={false}
@@ -327,7 +336,7 @@ export default function Index() {
                 disabled={isDeleting}
               >
                 {isDeleting ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={colors.inverseText} size="small" />
                 ) : (
                   <Text style={styles.modalBtnTextDelete}>Sì</Text>
                 )}
@@ -343,7 +352,7 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: palette.white,
+    backgroundColor: colors.background,
   },
   centered: {
     justifyContent: 'center',
@@ -372,37 +381,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 22,
     borderWidth: 2,
-    borderColor: palette.black,
+    borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addButtonText: {
-    color: palette.black,
+    color: colors.primary,
     fontSize: 24,
     fontWeight: '400',
     marginTop: -2,
-  },
-  tabSelector: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: spacing.lg,
-  },
-  tabItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  tabItemActive: {
-    backgroundColor: palette.black,
-  },
-  tabText: {
-    ...typography.body,
-    fontSize: 14,
-    color: palette.gray,
-  },
-  tabTextActive: {
-    color: palette.white,
   },
   sectionHeader: {
     ...typography.header,
@@ -411,7 +398,7 @@ const styles = StyleSheet.create({
   course: {
     paddingVertical: 28,
     paddingHorizontal: 28,
-    borderRadius: 44,
+    borderRadius: radius.md, // Consistent radius
     marginBottom: 16,
   },
   courseContent: {
@@ -448,7 +435,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: palette.black,
+    backgroundColor: colors.primary,
     borderRadius: 4,
   },
   progressValue: {
@@ -461,14 +448,33 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginLeft: 15,
   },
-  emptyList: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 60,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    marginTop: spacing.sm,
   },
   emptyText: {
     ...typography.body,
-    color: palette.gray,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  emptyAction: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.lg,
+  },
+  emptyActionText: {
+    color: colors.inverseText,
+    fontWeight: '700',
+    fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
@@ -478,7 +484,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: palette.white,
+    backgroundColor: colors.background,
     borderRadius: radius.md,
     padding: 24,
     width: '100%',
@@ -508,17 +514,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalBtnCancel: {
-    backgroundColor: palette.lightGray,
+    backgroundColor: colors.secondary,
   },
   modalBtnDelete: {
-    backgroundColor: palette.black,
+    backgroundColor: colors.primary,
   },
   modalBtnTextCancel: {
     fontWeight: '700',
-    color: palette.black,
+    color: colors.textPrimary,
   },
   modalBtnTextDelete: {
     fontWeight: '700',
-    color: palette.white,
+    color: colors.inverseText,
   },
-})
+});

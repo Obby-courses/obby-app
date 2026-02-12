@@ -1,6 +1,6 @@
 import { getCourseColor } from '@/constants/courseColors'
 import { supabase } from '@/lib/supabase'
-import { palette, spacing } from '@/lib/theme'
+import { colors, radius, spacing, typography } from '@/lib/theme'
 import {
   useLocalSearchParams,
   useRouter,
@@ -97,7 +97,7 @@ export default function CourseScreen() {
   const initialized = useRef(false)
   const flatListRef = useRef<FlatList<any>>(null)
 
-  const courseColor = courseId ? getCourseColor(courseId) : palette.black
+  const courseColor = courseId ? getCourseColor(courseId) : colors.primary
 
   /* ---------------- LOAD ---------------- */
 
@@ -423,21 +423,33 @@ export default function CourseScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: courseColor }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       {!mapReady && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.white, zIndex: 100, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={palette.black} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 100, justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
 
       <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Pressable onPress={() => router.replace('/')} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: palette.black, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)' }}>
+          <Pressable
+            onPress={() => router.replace('/')}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: radius.md,
+              borderWidth: 2,
+              borderColor: colors.primary,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: colors.background
+            }}
+          >
             <Text style={{ fontSize: 20, fontWeight: '800' }}>←</Text>
           </Pressable>
           <View style={{ flex: 1, marginHorizontal: 15 }}>
-            <Text style={{ fontSize: 13, fontWeight: '900', color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Il tuo percorso</Text>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: palette.black }} numberOfLines={1}>{courseTitle}</Text>
+            <Text style={{ ...typography.label, color: colors.mutedText }}>Il tuo percorso</Text>
+            <Text style={{ ...typography.header, color: colors.textPrimary }} numberOfLines={1}>{courseTitle}</Text>
           </View>
           <View style={{ width: 44 }} />
         </View>
@@ -471,31 +483,39 @@ export default function CourseScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setSelectedStep(null)}
       >
-        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={{ flex: 1, marginTop: spacing.md }}>
             <View style={{ padding: spacing.lg, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
-              <Pressable onPress={() => { setSelectedStep(null); setSelectedMilestone(null); }} style={{ width: 40, height: 40, backgroundColor: palette.lightGray, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: palette.border }}>
-                <Text style={{ fontSize: 16, color: palette.black, fontWeight: '900' }}>✕</Text>
+              <Pressable onPress={() => { setSelectedStep(null); setSelectedMilestone(null); }} style={{ width: 40, height: 40, backgroundColor: colors.card, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.border }}>
+                <Text style={{ fontSize: 16, color: colors.textPrimary, fontWeight: '900' }}>✕</Text>
               </Pressable>
             </View>
 
-            {selectedStep && (
-              <StepItem
-                step={selectedStep}
-                onUpdateStatus={async (id, status) => {
-                  await updateStepStatus(id, status)
-                  if (status === 'completed' || status === 'skipped') {
-                    setSelectedStep(null)
-                  }
-                }}
-                index={steps.findIndex(s => s.id === selectedStep.id)}
-                daysPerStep={daysPerStep}
-                courseCreatedAt={courseCreatedAt}
-                firstIncompleteIndex={steps.findIndex(s => !s.completed)}
-                referenceDate={referenceDate}
-                courseColor={courseColor}
-              />
-            )}
+            {selectedStep && (() => {
+              const currentIdx = steps.findIndex(s => s.id === selectedStep.id)
+              const hasPrev = currentIdx > 0
+              const hasNext = currentIdx < steps.length - 1
+
+              return (
+                <StepItem
+                  step={selectedStep}
+                  onUpdateStatus={async (id, status) => {
+                    await updateStepStatus(id, status)
+                    if (status === 'completed' || status === 'skipped') {
+                      setSelectedStep(null)
+                    }
+                  }}
+                  index={currentIdx}
+                  daysPerStep={daysPerStep}
+                  courseCreatedAt={courseCreatedAt}
+                  firstIncompleteIndex={steps.findIndex(s => !s.completed)}
+                  referenceDate={referenceDate}
+                  courseColor={courseColor}
+                  onPrev={hasPrev ? () => setSelectedStep(steps[currentIdx - 1]) : undefined}
+                  onNext={hasNext ? () => setSelectedStep(steps[currentIdx + 1]) : undefined}
+                />
+              )
+            })()}
           </View>
         </View>
       </Modal>
@@ -507,11 +527,11 @@ export default function CourseScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setSelectedMilestone(null)}
       >
-        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={{ flex: 1, marginTop: spacing.md }}>
             <View style={{ padding: spacing.md, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
-              <Pressable onPress={() => setSelectedMilestone(null)} style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 20 }}>
-                <Text style={{ fontSize: 16, color: '#000', fontWeight: 'bold' }}>✕</Text>
+              <Pressable onPress={() => setSelectedMilestone(null)} style={{ width: 40, height: 40, backgroundColor: colors.card, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.border }}>
+                <Text style={{ fontSize: 16, color: colors.textPrimary, fontWeight: '900' }}>✕</Text>
               </Pressable>
             </View>
 
@@ -542,3 +562,4 @@ export default function CourseScreen() {
     </View>
   )
 }
+

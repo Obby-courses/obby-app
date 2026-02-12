@@ -40,6 +40,8 @@ type StepItemProps = {
   firstIncompleteIndex: number
   referenceDate: string
   courseColor?: string
+  onNext?: () => void
+  onPrev?: () => void
 }
 
 /* ================================
@@ -55,6 +57,8 @@ export default function StepItem({
   firstIncompleteIndex,
   referenceDate,
   courseColor = palette.black,
+  onNext,
+  onPrev,
 }: StepItemProps) {
   const insets = useSafeAreaInsets()
   const [showPreview, setShowPreview] = useState(false)
@@ -134,13 +138,30 @@ export default function StepItem({
                 </Text>
               </View>
 
-              <Text style={styles.statusText}>
-                {step.status === 'skipped'
-                  ? '⏭️ Saltato'
-                  : step.completed
-                    ? '✅ Completato'
-                    : `⏳ Step #${index + 1}`}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.statusText}>
+                  {step.status === 'skipped'
+                    ? '⏭️ Saltato'
+                    : step.completed
+                      ? '✅ Completato'
+                      : `⏳ Step #${index + 1}`}
+                </Text>
+
+                <View style={{ flex: 1 }} />
+
+                <View style={styles.navButtons}>
+                  {onPrev && (
+                    <Pressable onPress={onPrev} style={styles.navButton}>
+                      <Text style={styles.navButtonText}>←</Text>
+                    </Pressable>
+                  )}
+                  {onNext && (
+                    <Pressable onPress={onNext} style={styles.navButton}>
+                      <Text style={styles.navButtonText}>→</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
 
               {hasResource && step.resource && (() => {
                 const res = step.resource;
@@ -394,5 +415,24 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: '100%',
     borderRadius: 3,
+  },
+  navButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  navButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: palette.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  navButtonText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: palette.black,
   },
 })

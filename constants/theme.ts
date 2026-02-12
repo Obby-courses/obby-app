@@ -1,33 +1,40 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Updated theme constants to use the modular theme system from @/lib/theme.
+ * This ensures consistency across the app.
  */
 
-import { Platform } from 'react-native';
+import { colors, palette } from '@/lib/theme';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = colors.primary;
+const tintColorDark = palette.white;
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: colors.textPrimary,
+    background: colors.background,
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: colors.textSecondary,
+    tabIconDefault: colors.mutedText,
     tabIconSelected: tintColorLight,
+  },
+  dark: {
+    text: palette.white,
+    background: palette.black,
+    tint: tintColorDark,
+    icon: palette.gray400,
+    tabIconDefault: palette.gray600,
+    tabIconSelected: tintColorDark,
   },
 };
 
+// Re-export Fonts (kept for compatibility, though we prefer lib/theme/typography)
+import { Platform } from 'react-native';
+
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {

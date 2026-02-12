@@ -58,18 +58,18 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
 
-    // 1) Carica gli step esistenti
-    const { data: existingStepsData, error: loadError } = await supabase
+    // 1) Carica TUTTI gli step del corso per avere contesto completo ed evitare duplicati
+    const { data: allStepsData, error: loadError } = await supabase
       .from('steps')
-      .select('id, title, description, order_index')
-      .eq('phase_id', phaseId)
+      .select('id, title, description, order_index, phase_id')
+      .eq('course_id', courseId)
       .order('order_index')
 
     if (loadError) {
         console.warn("⚠️ Errore caricamento step esistenti:", loadError.message)
     }
-    const existingSteps = existingStepsData || []
-    console.log(`[DATA] Found ${existingSteps.length} existing steps`)
+    const allExistingSteps = allStepsData || []
+    console.log(`[DATA] Found ${allExistingSteps.length} total steps in course`)
 
     const createdSteps = []
     let iteration = 0
@@ -77,6 +77,9 @@ serve(async (req: Request) => {
     while (iteration < MAX_ITERATIONS) {
       iteration++
       console.log(`\n🔄 ITERAZIONE ${iteration}/${MAX_ITERATIONS}`)
+
+      // Filtriamo gli step della fase corrente per il check di completamento
+      const currentPhaseSteps = allExistingSteps.filter(s => s.phase_id === phaseId)
 
       // --- 2.1) Controllo completamento fase ---
       console.log("Check completion...")
@@ -90,7 +93,7 @@ serve(async (req: Request) => {
             { role: 'user', content: USER_PHASE_COMPLETION_PROMPT({
                 phaseTitle,
                 phaseDescription: phaseDescription || '',
-                existingSteps: existingSteps.map(s => ({ title: s.title, description: s.description }))
+                existingSteps: currentPhaseSteps.map(s => ({ title: s.title, description: s.description }))
               })
             },
           ],
@@ -125,7 +128,7 @@ serve(async (req: Request) => {
                 courseTitle,
                 phaseTitle,
                 phaseDescription: phaseDescription || '',
-                existingSteps: existingSteps.map(s => ({ title: s.title, description: s.description }))
+                existingSteps: allExistingSteps.map(s => ({ title: s.title, description: s.description }))
               })
             },
           ],
@@ -226,7 +229,8 @@ serve(async (req: Request) => {
                 intent,
                 videoTitle: foundResource.title,
                 videoDescription: foundResource.description,
-                phaseTitle
+                phaseTitle,
+                existingSteps: allExistingSteps.map(s => ({ title: s.title, description: s.description }))
               })
             },
           ],
@@ -254,7 +258,7 @@ serve(async (req: Request) => {
         .insert({
           course_id: courseId,
           phase_id: phaseId,
-          order_index: existingSteps.length + 1,
+          order_index: allExistingSteps.filter(s => s.phase_id === phaseId).length + 1,
           title: stepResult.title,
           description: stepResult.description,
           completed: false,
@@ -264,7 +268,13 @@ serve(async (req: Request) => {
 
       if (stepErr) throw new Error(`DB Step Error: ${stepErr.message}`)
 
-      existingSteps.push({ id: savedStep.id, title: savedStep.title, description: savedStep.description, order_index: savedStep.order_index })
+      allExistingSteps.push({ 
+        id: savedStep.id, 
+        title: savedStep.title, 
+        description: savedStep.description, 
+        order_index: savedStep.order_index,
+        phase_id: phaseId
+      })
       createdSteps.push(savedStep)
       console.log(`✅ Saved: ${savedStep.title}`)
     }

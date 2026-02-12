@@ -1,4 +1,4 @@
-import { palette, spacing, typography } from '@/lib/theme'
+import { colors, palette, radius, spacing, typography } from '@/lib/theme'
 import React from 'react'
 import {
     Pressable,
@@ -22,8 +22,12 @@ export default function MilestoneNode({
     milestone,
     isLocked,
     onPress,
-    courseColor = palette.black,
+    courseColor = colors.primary,
 }: MilestoneNodeProps) {
+
+    // Logic: Milestones are "Special" so they get the color pop
+    const activeColor = courseColor;
+    const isSpecial = !isLocked;
 
     return (
         <View style={styles.container}>
@@ -32,30 +36,37 @@ export default function MilestoneNode({
                 style={({ pressed }) => [
                     styles.block,
                     {
-                        backgroundColor: isLocked ? 'rgba(0,0,0,0.05)' : palette.white,
+                        backgroundColor: isLocked ? colors.card : colors.background,
+                        borderColor: isLocked ? colors.border : colors.primary,
                         transform: [{ scale: pressed ? 0.98 : 1 }],
-                        opacity: isLocked ? 0.6 : 1,
-                        borderColor: isLocked ? 'transparent' : palette.black,
+                        opacity: isLocked ? 0.7 : 1,
+                        borderWidth: isSpecial ? 3 : 1,
                     },
                 ]}
             >
                 <View style={styles.contentRow}>
-                    <View style={[styles.iconContainer, { backgroundColor: isLocked ? '#eee' : courseColor }]}>
+                    <View style={[
+                        styles.iconContainer,
+                        {
+                            backgroundColor: isLocked ? colors.card : activeColor,
+                            borderColor: isLocked ? colors.border : colors.primary
+                        }
+                    ]}>
                         <Text style={{ fontSize: 32 }}>
                             {isLocked ? '🔒' : '🏆'}
                         </Text>
                     </View>
 
                     <View style={{ flex: 1 }}>
-                        <Text style={[styles.badge, { color: isLocked ? palette.gray : palette.black }]}>MILESTONE</Text>
-                        <Text style={[styles.title, { color: palette.black }]}>
+                        <Text style={[styles.badge, { color: isLocked ? colors.mutedText : activeColor }]}>MILESTONE</Text>
+                        <Text style={[styles.title, { color: colors.textPrimary }]}>
                             {milestone.title}
                         </Text>
                     </View>
 
                     {!isLocked && (
-                        <View style={styles.arrowContainer}>
-                            <Text style={{ fontSize: 20, color: palette.black }}>→</Text>
+                        <View style={[styles.arrowContainer, { borderColor: activeColor }]}>
+                            <Text style={{ fontSize: 20, color: activeColor }}>→</Text>
                         </View>
                     )}
                 </View>
@@ -74,14 +85,13 @@ const styles = StyleSheet.create({
     },
     block: {
         width: '100%',
-        borderRadius: 40,
+        borderRadius: radius.md,
         padding: spacing.lg,
-        borderWidth: 3,
         shadowColor: palette.black,
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 20,
-        elevation: 5,
+        elevation: 3,
     },
     contentRow: {
         flexDirection: 'row',
@@ -89,24 +99,23 @@ const styles = StyleSheet.create({
         gap: spacing.md,
     },
     iconContainer: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
+        width: 76,
+        height: 76,
+        borderRadius: 38,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
-        borderColor: palette.black,
     },
     badge: {
         ...typography.label,
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '900',
         letterSpacing: 2,
         marginBottom: 4,
     },
     title: {
         ...typography.body,
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: '800',
     },
     arrowContainer: {
@@ -116,8 +125,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: palette.black,
+        borderWidth: 1.5,
     },
-})
+});
 

@@ -1,4 +1,4 @@
-import { palette } from '@/lib/theme'
+import { colors, palette } from '@/lib/theme'
 import React from 'react'
 import {
     Pressable,
@@ -34,29 +34,30 @@ export default function StepNode({
     isPlaceholder = false,
     remainingProgress = 1,
     onPress,
-    courseColor = palette.black,
+    courseColor = colors.primary,
 }: StepNodeProps) {
     const isCompleted = step.completed || step.status === 'skipped'
 
     // Styles based on state
-    let backgroundColor = 'rgba(0,0,0,0.05)'
-    let textColor = 'rgba(0,0,0,0.3)'
+    let backgroundColor = colors.card
+    let textColor = colors.mutedText
     let borderColor = 'transparent'
 
     if (isCompleted) {
-        backgroundColor = palette.white
-        textColor = palette.black
+        backgroundColor = colors.background
+        textColor = colors.textPrimary
+        borderColor = colors.primary // Subtle indicator of completion? Or just black.
     } else if (isCurrent) {
-        backgroundColor = palette.white
-        textColor = palette.black
-        borderColor = palette.black
+        backgroundColor = colors.background
+        textColor = colors.textPrimary
+        borderColor = colors.primary
     } else if (isPlaceholder) {
-        backgroundColor = 'rgba(255,255,255,0.1)'
-        textColor = 'rgba(0,0,0,0.2)'
+        backgroundColor = colors.card
+        textColor = colors.mutedText
     } else if (!isLocked) {
-        backgroundColor = 'rgba(255,255,255,0.2)'
-        textColor = palette.black
-        borderColor = 'rgba(0,0,0,0.1)'
+        backgroundColor = colors.background
+        textColor = colors.textPrimary
+        borderColor = colors.border
     }
 
     // Circular Progress Params
@@ -76,7 +77,7 @@ export default function StepNode({
                             cx={center}
                             cy={center}
                             r={radius}
-                            stroke={palette.lightGray}
+                            stroke={colors.border}
                             strokeWidth={strokeWidth}
                             fill="none"
                         />
@@ -84,7 +85,7 @@ export default function StepNode({
                             cx={center}
                             cy={center}
                             r={radius}
-                            stroke={palette.black}
+                            stroke={courseColor}
                             strokeWidth={strokeWidth}
                             strokeDasharray={circumference}
                             strokeDashoffset={strokeDashoffset}
@@ -103,11 +104,11 @@ export default function StepNode({
                     styles.node,
                     {
                         backgroundColor,
-                        borderColor: isPlaceholder ? '#eee' : borderColor,
+                        borderColor: isPlaceholder ? colors.border : (isCompleted || isCurrent ? colors.primary : borderColor),
                         borderStyle: isPlaceholder ? 'dashed' : 'solid',
-                        opacity: isLocked && !isPlaceholder ? 0.5 : 1,
+                        opacity: isLocked && !isPlaceholder ? 0.3 : 1, // More faded if locked
                         transform: [{ scale: (pressed && !isPlaceholder) ? 0.92 : 1 }],
-                        shadowOpacity: isCurrent ? 0.2 : 0,
+                        shadowOpacity: (isCurrent || isCompleted) ? 0.1 : 0,
                     },
                 ]}
             >
@@ -138,18 +139,17 @@ const styles = StyleSheet.create({
         width: 70,
         height: 70,
         borderRadius: 35,
-        borderWidth: 3,
+        borderWidth: 2,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: palette.white,
         shadowColor: palette.black,
         shadowOffset: { width: 0, height: 4 },
         shadowRadius: 10,
         zIndex: 2,
     },
     numberText: {
-        fontSize: 28,
-        fontWeight: '900',
+        fontSize: 24,
+        fontWeight: '800',
     },
-})
+});
 

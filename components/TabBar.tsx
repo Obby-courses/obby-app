@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useSegments } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette } from '../lib/theme';
+import { colors, palette, radius } from '../lib/theme';
 
 export default function TabBar() {
     const router = useRouter();
@@ -16,12 +16,11 @@ export default function TabBar() {
     if (
         segments.includes('login') ||
         segments.includes('new-course') ||
-        segments.includes('phase-completed') ||
-        segments.includes('course')
+        segments.includes('phase-completed')
     ) return null;
 
     return (
-        <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 15) }]}>
+        <View style={[styles.container, { bottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.content}>
                 <TouchableOpacity
                     style={styles.tab}
@@ -30,10 +29,9 @@ export default function TabBar() {
                 >
                     <Ionicons
                         name={isHome ? "home" : "home-outline"}
-                        size={24}
-                        color={isHome ? palette.black : palette.gray}
+                        size={22}
+                        color={isHome ? colors.primary : colors.mutedText}
                     />
-                    <Text style={[styles.label, isHome && styles.activeLabel]}>Percorsi</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -43,10 +41,9 @@ export default function TabBar() {
                 >
                     <Ionicons
                         name={isProfile ? "person" : "person-outline"}
-                        size={24}
-                        color={isProfile ? palette.black : palette.gray}
+                        size={22}
+                        color={isProfile ? colors.primary : colors.mutedText}
                     />
-                    <Text style={[styles.label, isProfile && styles.activeLabel]}>Profilo</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -56,39 +53,30 @@ export default function TabBar() {
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: 20,
-        left: 20,
-        right: 20,
-        backgroundColor: palette.white,
-        borderRadius: 40,
-        paddingTop: 15,
+        alignSelf: 'center',
+        width: 160, // Fixed compact width
+        backgroundColor: colors.background,
+        borderRadius: radius.lg, // Pills style
+        paddingVertical: 12,
         shadowColor: palette.black,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
-        shadowRadius: 20,
-        elevation: 10,
-        borderWidth: 2,
-        borderColor: palette.border,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 15,
+        elevation: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     content: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
+        justifyContent: 'space-evenly',
         alignItems: 'center',
     },
     tab: {
         alignItems: 'center',
-        paddingVertical: 4,
-        flex: 1,
-    },
-    label: {
-        fontSize: 12,
-        marginTop: 4,
-        color: palette.gray,
-        fontWeight: '600',
-    },
-    activeLabel: {
-        color: palette.black,
-        fontWeight: '800',
+        justifyContent: 'center',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
     },
 });
 
