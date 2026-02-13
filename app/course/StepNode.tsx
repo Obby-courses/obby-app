@@ -39,9 +39,9 @@ export default function StepNode({
     const isCompleted = step.completed || step.status === 'skipped'
 
     // Styles based on state
-    let backgroundColor = colors.card
-    let textColor = colors.mutedText
-    let borderColor = 'transparent'
+    let backgroundColor: string = colors.card
+    let textColor: string = colors.mutedText
+    let borderColor: string = 'transparent'
 
     if (isCompleted) {
         backgroundColor = colors.background

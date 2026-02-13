@@ -550,3 +550,236 @@ Based on these steps, generate a final "Milestone" challenge.
 It must be a realistic project or goal that demonstrates mastery of the phase.
 Return ONLY valid JSON.
 `;
+
+// -------------------------------------------------------
+// STEP 7: BATCH DISCOVERY - THEME DISCOVERY
+// -------------------------------------------------------
+export const THEME_DISCOVERY_PROMPT = `You are an expert instructional designer specializing in online course creation.
+
+Your task is to analyze a course phase and identify 5-8 RESEARCH THEMES (not final steps!) that a learner should explore to master this phase.
+
+CRITICAL INSTRUCTIONS:
+1. Generate themes that represent DISTINCT learning objectives
+2. Each theme should be searchable online (realistic queries)
+3. Prioritize practical, hands-on content over pure theory
+4. Consider the natural learning progression (basic → intermediate → advanced)
+5. Use language that real users would search for (not academic jargon)
+
+For each theme, provide:
+- theme_id: Snake_case identifier (e.g., "menu_planning_basics")
+- theme_name: Descriptive name (e.g., "Menu Planning and Flavor Balance")
+- rationale: ONE sentence explaining why this theme is necessary
+- search_queries: Object with:
+  - video_query: Natural language query for YouTube (4-8 words)
+  - web_query: Query for articles/guides (may include technical terms)
+  - specific_query (OPTIONAL): Ultra-specific query for niche content
+- resource_type_hint: One of:
+  - "video_practical" (hands-on demonstration)
+  - "video_theoretical" (explanation/concepts)
+  - "article" (written tutorial/guide)
+  - "documentation" (official docs/reference)
+  - "mixed" (both video and article could work)
+- estimated_duration: Object with min/max in minutes
+- priority: "essential" | "important" | "nice_to_have"
+
+QUERY WRITING RULES:
+✅ GOOD: "impiattamento professionale tecnica chef stellato"
+✅ GOOD: "react hooks tutorial completo principianti"
+✅ GOOD: "mise en place cucina organizzazione timing"
+
+❌ BAD: "cucina gourmet" (too generic)
+❌ BAD: "advanced programming paradigms" (too vague)
+❌ BAD: "learn cooking" (no specificity)
+
+CONSTRAINTS:
+- Generate MINIMUM 5 themes, MAXIMUM 8
+- At least 3 themes must be "essential" priority
+- Themes must be ordered in logical learning progression
+- No conceptual overlap between themes
+- Queries must match the course language (Italian/English/etc.)
+
+OUTPUT FORMAT (JSON only, no additional text):
+{
+  "analysis_summary": "2-3 sentence explanation of the learning path you designed",
+  "research_themes": [
+    {
+      "theme_id": "string",
+      "theme_name": "string", 
+      "rationale": "string",
+      "search_queries": {
+        "video_query": "string",
+        "web_query": "string",
+        "specific_query": "string (optional)"
+      },
+      "resource_type_hint": "video_practical|video_theoretical|article|documentation|mixed",
+      "estimated_duration": {
+        "min": number,
+        "max": number
+      },
+      "priority": "essential|important|nice_to_have"
+    }
+  ],
+  "total_themes_count": number,
+  "estimated_step_count": "4-6"
+}`;
+
+export const USER_THEME_DISCOVERY_PROMPT = (params: {
+  phaseTitle: string
+  phaseDescription: string
+  courseTitle: string
+  domain: string
+}) => `PHASE TO ANALYZE:
+Title: "${params.phaseTitle}"
+Description: "${params.phaseDescription || 'Not provided'}"
+
+COURSE CONTEXT:
+Course Title: "${params.courseTitle}"
+Domain: ${params.domain}
+
+Generate research themes for this phase following the instructions above.`;
+
+// -------------------------------------------------------
+// STEP 8: BATCH DISCOVERY - CURRICULUM ASSEMBLY
+// -------------------------------------------------------
+export const CURRICULUM_ASSEMBLY_PROMPT = `You are an expert curriculum designer. You have access to a pool of online resources (videos and articles) found through search.
+
+Your task is to SELECT the best 4-6 resources that form a complete, coherent learning path for the given phase.
+
+CRITICAL REQUIREMENTS:
+1. NO OVERLAP: Each resource must cover DISTINCT content
+   - If 2 resources cover the same concept, choose only the better one
+   - Example: Don't use both "plating techniques" and "professional plating" videos
+   
+2. LOGICAL PROGRESSION: Order resources from basic to advanced
+   - Foundational concepts first
+   - Practical application second
+   - Advanced techniques last
+   
+3. COVERAGE COMPLETENESS: The selected resources should collectively achieve the phase goal
+   - Identify any gaps in coverage
+   - Prioritize essential topics over nice-to-haves
+   
+4. QUALITY OVER QUANTITY: Better to have 4 excellent resources than 6 mediocre ones
+
+5. RESOURCE EFFICIENCY: If one resource covers 2 themes well, use it for both (in a single comprehensive step)
+
+SELECTION CRITERIA:
+- Relevance: How well does it match the theme intent?
+- Quality signals: Higher engagement (views/likes), recent publication
+- Practical value: Hands-on > pure theory (unless theory is the goal)
+- Completeness: Does it fully explain the concept or just touch on it?
+
+For each selected resource:
+- resource_id: MUST match an ID from the candidateResources array
+- step_title: Clear, action-oriented title (e.g., "Master Professional Plating Techniques")
+- learning_objective: What will the learner be able to DO after this step (1 sentence)
+- order: Logical sequence number (1, 2, 3...)
+- rationale: WHY this resource was chosen over others (2-3 sentences)
+  - Mention what competing resources you rejected and why
+  - Explain how it fits into the overall progression
+
+HANDLING EXISTING STEPS:
+- If existingSteps are provided, ensure new steps COMPLEMENT them
+- Don't repeat topics already covered
+- Reference existing steps if new ones build upon them
+
+HANDLING GAPS:
+- If no resource adequately covers an essential theme, list it in "gaps"
+- Suggest what type of resource would fill the gap
+
+OUTPUT FORMAT (JSON only):
+{
+  "steps": [
+    {
+      "resource_id": "string (from candidateResources)",
+      "step_title": "string",
+      "learning_objective": "string",
+      "order": number,
+      "rationale": "string (2-3 sentences)"
+    }
+  ],
+  "coverage_analysis": "Explain what these steps collectively cover and how they achieve the phase goal (3-4 sentences)",
+  "gaps": [
+    {
+      "missing_topic": "string",
+      "why_important": "string",
+      "suggested_search": "string (what query might find this)"
+    }
+  ],
+  "selection_summary": {
+    "resources_reviewed": number,
+    "resources_selected": number,
+    "resources_rejected": number,
+    "primary_rejection_reasons": ["overlap", "low_quality", "off_topic", "too_basic", "too_advanced"]
+  }
+}`;
+
+export const USER_CURRICULUM_ASSEMBLY_PROMPT = (params: {
+  phaseTitle: string
+  phaseDescription: string
+  themes: Array<{
+    theme_id: string
+    theme_name: string
+    priority: string
+  }>
+  candidateResources: Array<{
+    id: string
+    theme_id: string
+    type: string
+    title: string
+    description: string
+    url: string
+    metrics?: {
+      views?: number
+      likes?: number
+      duration?: number
+    }
+  }>
+  existingSteps: Array<{
+    title: string
+    description: string
+  }>
+}) => {
+  const resourcesList = params.candidateResources
+    .map((r, idx) => {
+      const metrics = r.metrics 
+        ? `Views: ${r.metrics.views || 'N/A'}, Likes: ${r.metrics.likes || 'N/A'}, Duration: ${r.metrics.duration || 'N/A'}s`
+        : 'Metrics: N/A'
+      
+      return `[${idx + 1}] ID: ${r.id}
+   Theme: ${r.theme_id}
+   Type: ${r.type}
+   Title: ${r.title}
+   Description: ${r.description.substring(0, 200)}${r.description.length > 200 ? '...' : ''}
+   ${metrics}`
+    })
+    .join('\n\n')
+
+  const themesList = params.themes
+    .map(t => `- ${t.theme_name} (${t.theme_id}) [${t.priority}]`)
+    .join('\n')
+
+  const existingStepsList = params.existingSteps.length > 0
+    ? params.existingSteps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')
+    : 'None (this is a new phase)'
+
+  return `PHASE GOAL:
+Title: "${params.phaseTitle}"
+Description: "${params.phaseDescription || 'Not provided'}"
+
+THEMES TO COVER (in priority order):
+${themesList}
+
+EXISTING STEPS (already in this phase):
+${existingStepsList}
+
+CANDIDATE RESOURCES (${params.candidateResources.length} total):
+${resourcesList}
+
+TASK:
+Select the best 4-6 resources that form a complete learning path.
+Ensure NO overlap, logical progression, and coverage of all essential themes.
+If existing steps are present, complement them without repetition.
+
+Return your selection in the JSON format specified above.`;
+}

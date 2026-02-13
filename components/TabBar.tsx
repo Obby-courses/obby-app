@@ -10,8 +10,9 @@ export default function TabBar() {
     const segments = useSegments();
     const insets = useSafeAreaInsets();
 
+    const isCourse = segments.includes('course');
     const isProfile = segments.includes('profile');
-    const isHome = (!segments.length || segments[0] === '(tabs)' || segments[0] === '') && !isProfile;
+    const isHome = (!segments.length || segments[0] === '(tabs)' || segments[0] === '') && !isProfile && !isCourse;
 
     if (
         segments.includes('login') ||
@@ -36,6 +37,18 @@ export default function TabBar() {
 
                 <TouchableOpacity
                     style={styles.tab}
+                    onPress={() => router.push('/course/any')}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons
+                        name={isCourse ? "map" : "map-outline"}
+                        size={22}
+                        color={isCourse ? colors.primary : colors.mutedText}
+                    />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.tab}
                     onPress={() => router.replace('/profile')}
                     activeOpacity={0.7}
                 >
@@ -54,7 +67,7 @@ const styles = StyleSheet.create({
     container: {
         position: 'absolute',
         alignSelf: 'center',
-        width: 160, // Fixed compact width
+        width: 220, // Increased for 3 icons
         backgroundColor: colors.background,
         borderRadius: radius.lg, // Pills style
         paddingVertical: 12,

@@ -2,14 +2,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-    PHASE_COMPLETION_EVALUATOR,
-    RESOURCE_BASED_STEP_CREATOR,
-    RESOURCE_ROUTER_PROMPT,
-    STEP_INTENT_GENERATOR,
-    USER_PHASE_COMPLETION_PROMPT,
-    USER_RESOURCE_BASED_STEP_PROMPT,
-    USER_RESOURCE_ROUTER_PROMPT,
-    USER_STEP_INTENT_PROMPT
+  CURRICULUM_ASSEMBLY_PROMPT,
+  THEME_DISCOVERY_PROMPT,
+  USER_CURRICULUM_ASSEMBLY_PROMPT,
+  USER_THEME_DISCOVERY_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -19,12 +15,140 @@ const corsHeaders = {
 
 const SEARCH_RESOURCES_FN = 'search-resources'
 const SEARCH_WEB_FN = 'search-web-resource'
-const MAX_ITERATIONS = 10 // Safety limit
+
+/* ------------------------------------------------------------------
+   HELPER FUNCTIONS
+   ------------------------------------------------------------------ */
+
+// Domain detection helper
+function detectDomain(courseTitle?: string): string {
+  if (!courseTitle) return 'generico'
+  const lower = courseTitle.toLowerCase()
+  
+  const domainMap: Record<string, string[]> = {
+    'cucina': ['cucina', 'cooking', 'chef', 'ricetta', 'food', 'mangiare'],
+    'programmazione': ['react', 'javascript', 'python', 'coding', 'dev', 'web', 'programmazione'],
+    'fitness': ['fitness', 'workout', 'exercise', 'training', 'yoga', 'palestra'],
+    'design': ['design', 'ui', 'ux', 'grafica', 'photoshop', 'illustrator'],
+    'business': ['marketing', 'business', 'sales', 'startup', 'impresa', 'vendita'],
+    'lingua': ['english', 'italiano', 'spanish', 'language', 'lingua', 'tedesco', 'francese']
+  }
+  
+  for (const [domain, keywords] of Object.entries(domainMap)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      return domain
+    }
+  }
+  
+  return 'generico'
+}
+
+// Resource quality filter
+interface ResourceCandidate {
+  id: string
+  theme_id: string
+  type: 'video' | 'webpage'
+  title: string
+  url: string
+  description: string
+  thumbnail_url?: string
+  metrics?: {
+    views?: number
+    likes?: number
+    duration?: number // in seconds
+  }
+}
+
+function filterQualityResources(resources: ResourceCandidate[]): ResourceCandidate[] {
+  const PAYWALL_DOMAINS = [
+    'medium.com',
+    'nytimes.com', 
+    'wsj.com',
+    'ft.com',
+    'udemy.com',
+    'coursera.org'
+  ]
+  
+  return resources.filter(r => {
+    // Video quality checks
+    if (r.type === 'video' && r.metrics) {
+      const duration = r.metrics.duration || 0
+      const views = r.metrics.views || 0
+      const likes = r.metrics.likes || 0
+      
+      // Skip very short or very long videos (3m to 30m)
+      if (duration < 180 || duration > 1800) return false
+      
+      // Skip videos with poor engagement if metrics exist
+      if (views > 100 && likes > 0) {
+        const engagementRate = likes / views
+        if (engagementRate < 0.005) return false // < 0.5% engagement (relaxed slightly)
+      }
+    }
+    
+    // Webpage quality checks
+    if (r.type === 'webpage') {
+      // Skip if description too short
+      if (!r.description || r.description.length < 50) return false
+      
+      // Skip known paywall domains
+      try {
+        const hostname = new URL(r.url).hostname.replace('www.', '')
+        if (PAYWALL_DOMAINS.some(pd => hostname.includes(pd))) return false
+      } catch (e) {
+        return false // Invalid URL
+      }
+    }
+    
+    return true
+  })
+}
+
+// Duplicate URL checker and resource creator
+async function getOrCreateResource(
+  supabase: any,
+  resource: ResourceCandidate
+): Promise<{ id: string }> {
+  // Check if URL already exists
+  const { data: existing, error: checkError } = await supabase
+    .from('resources')
+    .select('id')
+    .eq('url', resource.url)
+    .single()
+  
+  if (existing) {
+    console.log(`[DEDUP] Resource already exists: ${resource.url}`)
+    return { id: existing.id }
+  }
+  
+  // Create new resource
+  const { data: newResource, error: createError } = await supabase
+    .from('resources')
+    .insert({
+      title: resource.title,
+      url: resource.url,
+      thumbnail_url: resource.thumbnail_url,
+      summary: resource.description,
+      type: resource.type
+    })
+    .select('id')
+    .single()
+  
+  if (createError) {
+    throw new Error(`Failed to create resource: ${createError.message}`)
+  }
+  
+  return { id: newResource.id }
+}
+
+/* ------------------------------------------------------------------
+   MAIN FUNCTION
+   ------------------------------------------------------------------ */
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  console.log("[VERSION] 2026-02-01 - HYBRID SEARCH (STABLE)")
+  console.log("[VERSION] 2026-02-13 - BATCH DISCOVERY v1.1.2")
 
   try {
     const body = await req.json()
@@ -35,14 +159,13 @@ serve(async (req: Request) => {
       phaseTitle,
       phaseDescription,
       courseTitle, 
-      courseDescription,
-      searchMode = 'mixed' 
+      courseDescription
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
       console.error("❌ Missing parameters:", { courseId, phaseId, phaseTitle })
       return new Response(
-        JSON.stringify({ success: false, error: "Parametri obbligatori mancanti (courseId, phaseId o phaseTitle)" }),
+        JSON.stringify({ success: false, error: "Missing mandatory parameters (courseId, phaseId, or phaseTitle)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
@@ -54,239 +177,269 @@ serve(async (req: Request) => {
     console.log("[CONFIG] Project URL:", SUPABASE_URL)
     console.log("[CONFIG] Groq Key present:", !!GROQ_KEY)
 
-    if (!GROQ_KEY) throw new Error("Chiave API GROQ non configurata negli env di Supabase")
+    if (!GROQ_KEY) throw new Error("Groq API Key not configured in Supabase env")
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
 
-    // 1) Carica TUTTI gli step del corso per avere contesto completo ed evitare duplicati
+    // Ensure we have course context
+    let finalCourseTitle = courseTitle
+    let finalCourseDescription = courseDescription
+
+    if (!finalCourseTitle) {
+      console.log(`[DATA] Fetching course title for ID: ${courseId}`)
+      const { data: courseData } = await supabase
+        .from('courses')
+        .select('title, description')
+        .eq('id', courseId)
+        .single()
+      
+      if (courseData) {
+        finalCourseTitle = courseData.title
+        finalCourseDescription = courseData.description
+      }
+    }
+
+    // 0) Load existing steps
     const { data: allStepsData, error: loadError } = await supabase
       .from('steps')
       .select('id, title, description, order_index, phase_id')
       .eq('course_id', courseId)
       .order('order_index')
 
-    if (loadError) {
-        console.warn("⚠️ Errore caricamento step esistenti:", loadError.message)
+    if (loadError) console.warn("⚠️ Error loading existing steps:", loadError.message)
+    
+    // Filter steps for THIS phase to pass as context
+    const phaseSteps = (allStepsData || []).filter((s: any) => s.phase_id === phaseId)
+    console.log(`[DATA] Found ${phaseSteps.length} existing steps in this phase`)
+
+    /* ======================================================
+       PHASE 1: THEME DISCOVERY
+       ====================================================== */
+    console.log("🔍 PHASE 1: DISCOVERY")
+    const discoveryRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: THEME_DISCOVERY_PROMPT },
+          { 
+            role: 'user', 
+            content: USER_THEME_DISCOVERY_PROMPT({
+              phaseTitle,
+              phaseDescription: phaseDescription || '',
+              courseTitle: finalCourseTitle,
+              domain: detectDomain(finalCourseTitle)
+            })
+          }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7
+      })
+    })
+
+    if (!discoveryRes.ok) throw new Error(`Discovery Error: ${discoveryRes.status}`)
+    const discoveryData = await discoveryRes.json()
+    const themesResult = JSON.parse(discoveryData.choices[0].message.content)
+    const themes = themesResult.research_themes || []
+
+    console.log(`[DISCOVERY] Generated ${themes.length} themes:`, themes.map((t: any) => t.theme_name))
+
+    /* ======================================================
+       PHASE 2: PARALLEL SEARCH
+       ====================================================== */
+    console.log("🌐 PHASE 2: PARALLEL SEARCH")
+    
+    // Create an array of search promises
+    const searchPromises = themes.map(async (theme: any) => {
+      const results: ResourceCandidate[] = []
+      
+      // Determine what to search based on hint
+      const doSearchVideo = theme.resource_type_hint.includes('video') || theme.resource_type_hint === 'mixed'
+      const doSearchWeb = theme.resource_type_hint.includes('article') || theme.resource_type_hint === 'documentation' || theme.resource_type_hint === 'mixed'
+
+      try {
+        if (doSearchVideo) {
+             const res = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_RESOURCES_FN}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+                body: JSON.stringify({ 
+                    step_title: theme.search_queries.video_query, // Using query as title prompt 
+                    step_description: theme.rationale,
+                    course_title: finalCourseTitle, 
+                    phase_title: phaseTitle 
+                }),
+            })
+            const data = await res.json()
+            if (data.success && data.video) {
+                results.push({
+                    id: crypto.randomUUID(), // Temp ID
+                    theme_id: theme.theme_id,
+                    type: 'video',
+                    title: data.video.title,
+                    url: data.video.url,
+                    description: data.video.description,
+                    thumbnail_url: data.video.thumbnail_url,
+                    metrics: {
+                         // Mock metrics if not provided by search-resources (it mostly returns snippet)
+                         // Real implementation would pass metrics through search-resources
+                         views: 1000, 
+                         likes: 10,
+                         duration: 600
+                    }
+                })
+            }
+        }
+
+        if (doSearchWeb) {
+             const res = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_WEB_FN}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+                body: JSON.stringify({ query: theme.search_queries.web_query, course_title: finalCourseTitle }),
+            })
+            const data = await res.json()
+            if (data.success && data.results) {
+                // Take top 2 web results
+                data.results.slice(0, 2).forEach((r: any) => {
+                    results.push({
+                        id: crypto.randomUUID(),
+                        theme_id: theme.theme_id,
+                        type: 'webpage',
+                        title: r.title,
+                        url: r.link,
+                        description: r.snippet,
+                        thumbnail_url: r.thumbnail_url
+                    })
+                })
+            }
+        }
+      } catch (err) {
+          console.error(`[SEARCH ERROR] Theme '${theme.theme_id}' failed:`, err)
+      }
+      return results
+    })
+
+    // Wait for all searches to complete
+    const searchResultsNested = await Promise.all(searchPromises)
+    const candidateResources = searchResultsNested.flat()
+
+    console.log(`[SEARCH] Found ${candidateResources.length} total raw candidates`)
+
+    /* ======================================================
+       PHASE 3: QUALITY FILTERING & ASSEMBLY
+       ====================================================== */
+    console.log("🧠 PHASE 3: ASSEMBLY")
+
+    // Filter quality
+    // const qualityResources = filterQualityResources(candidateResources) // Enabled? 
+    // Using filtered for now, but falling back to original if too aggressive
+    let qualityResources = filterQualityResources(candidateResources)
+    
+    if (qualityResources.length < Math.max(2, themes.length / 2)) {
+        console.warn("[FILTER] Warning: Quality filter removed too many resources. Using raw candidates.")
+        qualityResources = candidateResources
     }
-    const allExistingSteps = allStepsData || []
-    console.log(`[DATA] Found ${allExistingSteps.length} total steps in course`)
+
+    console.log(`[FILTER] ${qualityResources.length} candidates passed filter`)
+
+    if (qualityResources.length === 0) {
+         throw new Error("No valid resources found for this phase matching quality criteria.")
+    }
+
+    // Call Assembly LLM
+    const assemblyRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: CURRICULUM_ASSEMBLY_PROMPT },
+          { 
+            role: 'user', 
+            content: USER_CURRICULUM_ASSEMBLY_PROMPT({
+              phaseTitle,
+              phaseDescription: phaseDescription || '',
+              themes: themes,
+              candidateResources: qualityResources,
+              existingSteps: phaseSteps
+            })
+          }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      })
+    })
+
+    if (!assemblyRes.ok) throw new Error(`Assembly Error: ${assemblyRes.status}`)
+    const assemblyData = await assemblyRes.json()
+    const curriculum = JSON.parse(assemblyData.choices[0].message.content)
+    
+    const finalSteps = curriculum.steps || []
+    console.log(`[ASSEMBLY] Planned ${finalSteps.length} steps`)
+
+    /* ======================================================
+       PHASE 4: BATCH SAVE (TRANSACTIONAL-LIKE)
+       ====================================================== */
+    console.log("💾 PHASE 4: SAVING")
 
     const createdSteps = []
-    let iteration = 0
+    
+    // We'll proceed in a loop essentially acting as a transaction script
+    // If one fails, we stop (simple version). Real atomic batch would need RPC.
+    
+    let globalOrderOffset = (allStepsData || []).filter((s:any) => s.phase_id === phaseId).length
 
-    while (iteration < MAX_ITERATIONS) {
-      iteration++
-      console.log(`\n🔄 ITERAZIONE ${iteration}/${MAX_ITERATIONS}`)
-
-      // Filtriamo gli step della fase corrente per il check di completamento
-      const currentPhaseSteps = allExistingSteps.filter(s => s.phase_id === phaseId)
-
-      // --- 2.1) Controllo completamento fase ---
-      console.log("Check completion...")
-      const completionCheckRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: PHASE_COMPLETION_EVALUATOR },
-            { role: 'user', content: USER_PHASE_COMPLETION_PROMPT({
-                phaseTitle,
-                phaseDescription: phaseDescription || '',
-                existingSteps: currentPhaseSteps.map(s => ({ title: s.title, description: s.description }))
-              })
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.1,
-        }),
-      })
-
-      if (!completionCheckRes.ok) {
-          const errText = await completionCheckRes.text()
-          throw new Error(`Groq Completion Error: ${completionCheckRes.status} - ${errText}`)
-      }
-      const completionData = await completionCheckRes.json()
-      const completionResult = JSON.parse(completionData.choices?.[0]?.message?.content || '{}')
-      console.log("[AI] Completion Result:", completionResult)
-
-      if (completionResult.is_complete) {
-        console.log("🎉 Obiettivi fase soddisfatti. Fine loop.")
-        break
-      }
-
-      // --- 2.2) Generazione intento step ---
-      console.log("Generate intent...")
-      const intentRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: STEP_INTENT_GENERATOR },
-            { role: 'user', content: USER_STEP_INTENT_PROMPT({
-                courseTitle,
-                phaseTitle,
-                phaseDescription: phaseDescription || '',
-                existingSteps: allExistingSteps.map(s => ({ title: s.title, description: s.description }))
-              })
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.2,
-        }),
-      })
-
-      if (!intentRes.ok) throw new Error(`Groq Intent Error: ${intentRes.status}`)
-      const intentData = await intentRes.json()
-      const intentResult = JSON.parse(intentData.choices?.[0]?.message?.content || '{}')
-      const { intent, search_keywords } = intentResult
-      console.log("[AI] Intent:", intentResult)
-
-      if (!intent || !search_keywords) {
-        console.log("⚠️ Intento non valido. Fine loop.")
-        break
-      }
-
-      // --- 2.3) Decisione tipo risorsa (Router) ---
-      let resourceType = searchMode
-      if (searchMode === 'mixed') {
-         console.log("Routing...")
-         try {
-            const routerRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-                body: JSON.stringify({
-                  model: 'llama-3.3-70b-versatile',
-                  messages: [
-                    { role: 'system', content: RESOURCE_ROUTER_PROMPT },
-                    { role: 'user', content: USER_RESOURCE_ROUTER_PROMPT({ intent, phaseTitle }) },
-                  ],
-                  response_format: { type: 'json_object' },
-                  temperature: 0.1,
-                }),
-              })
-            const routerData = await routerRes.json()
-            const routerDecision = JSON.parse(routerData.choices?.[0]?.message?.content || '{}')
-            resourceType = routerDecision.selected_type === 'webpage' ? 'web' : 'video'
-            console.log(`[ROUTER] Decided: ${resourceType}`)
-         } catch (e) {
-            console.error("Router error:", e)
-            resourceType = 'video'
-         }
-      }
-
-      // --- 2.4) Ricerca risorsa ---
-      let foundResource = null
-      
-      if (resourceType === 'web') {
-        console.log(`[SEARCH] Web: ${search_keywords}`)
-        const searchRes = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_WEB_FN}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
-            body: JSON.stringify({ query: search_keywords, course_title: courseTitle }),
-        })
-        const searchData = await searchRes.json()
-        if (searchData.success && searchData.results?.length > 0) {
-            const best = searchData.results[0]
-            foundResource = { title: best.title, url: best.link, thumbnail_url: best.thumbnail_url, description: best.snippet, type: 'webpage' }
-            console.log("✅ Web resource found")
-        } else {
-            console.error(`[SEARCH ERROR] Web search failed or returned 0 results. Status: ${searchData.success}, Error: ${searchData.error || 'Unknown'}`)
+    for (const plan of finalSteps) {
+        const resourceCandidate = qualityResources.find(r => r.id === plan.resource_id)
+        
+        if (!resourceCandidate) {
+            console.warn(`[SAVE SKIP] Resource ID ${plan.resource_id} not found in pool`)
+            continue
         }
-      } else {
-        console.log(`[SEARCH] Video: ${search_keywords}`)
-        const searchRes = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_RESOURCES_FN}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
-            body: JSON.stringify({ step_title: search_keywords, step_description: intent, course_title: courseTitle, phase_title: phaseTitle }),
-        })
-        const searchData = await searchRes.json()
-        if (searchData.success && searchData.video) {
-            const v = searchData.video
-            foundResource = { title: v.title, url: v.url, thumbnail_url: v.thumbnail_url, description: v.description, type: 'video' }
-            console.log("✅ Video resource found")
-        } else {
-            console.error(`[SEARCH ERROR] Video search failed. Error: ${searchData.error || searchData.message || 'Unknown'}`)
+
+        try {
+            // 1. Get or Create Resource
+            const { id: resourceId } = await getOrCreateResource(supabase, resourceCandidate)
+
+            // 2. Create Step
+            const { data: savedStep, error: stepErr } = await supabase
+                .from('steps')
+                .insert({
+                    course_id: courseId,
+                    phase_id: phaseId,
+                    order_index: globalOrderOffset + plan.order, // Append relative to existing
+                    title: plan.step_title,
+                    description: plan.learning_objective + " " + (plan.rationale || ""),
+                    completed: false,
+                    resource_id: resourceId
+                })
+                .select()
+                .single()
+
+            if (stepErr) throw stepErr
+            
+            createdSteps.push(savedStep)
+            console.log(`✅ Created Step: ${savedStep.title}`)
+            
+        } catch (saveErr) {
+            console.error(`[SAVE ERROR] Failed to save step '${plan.step_title}':`, saveErr)
+            // Continue with others? Or break? 
+            // We continue to save as many as possible in this robust mode
         }
-      }
-
-      if (!foundResource) {
-        console.log("⚠️ Nessuna risorsa trovata. Break loop.")
-        break
-      }
-
-      // --- 2.5) Creazione step finale ---
-      console.log("Create final step...")
-      const stepCreationRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: RESOURCE_BASED_STEP_CREATOR },
-            { role: 'user', content: USER_RESOURCE_BASED_STEP_PROMPT({
-                intent,
-                videoTitle: foundResource.title,
-                videoDescription: foundResource.description,
-                phaseTitle,
-                existingSteps: allExistingSteps.map(s => ({ title: s.title, description: s.description }))
-              })
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.2,
-        }),
-      })
-
-      if (!stepCreationRes.ok) throw new Error(`Groq StepCreation Error: ${stepCreationRes.status}`)
-      const stepCreationData = await stepCreationRes.json()
-      const stepResult = JSON.parse(stepCreationData.choices?.[0]?.message?.content || '{}')
-      console.log("[AI] Final Step:", stepResult)
-
-      // --- 2.6) Salvataggio DB ---
-      console.log("Saving to DB...")
-      const { data: savedResource, error: resErr } = await supabase
-        .from('resources')
-        .insert({ title: foundResource.title, url: foundResource.url, thumbnail_url: foundResource.thumbnail_url, summary: foundResource.description, type: foundResource.type })
-        .select().single()
-
-      if (resErr) throw new Error(`DB Resource Error: ${resErr.message}`)
-
-      const { data: savedStep, error: stepErr } = await supabase
-        .from('steps')
-        .insert({
-          course_id: courseId,
-          phase_id: phaseId,
-          order_index: allExistingSteps.filter(s => s.phase_id === phaseId).length + 1,
-          title: stepResult.title,
-          description: stepResult.description,
-          completed: false,
-          resource_id: savedResource.id
-        })
-        .select().single()
-
-      if (stepErr) throw new Error(`DB Step Error: ${stepErr.message}`)
-
-      allExistingSteps.push({ 
-        id: savedStep.id, 
-        title: savedStep.title, 
-        description: savedStep.description, 
-        order_index: savedStep.order_index,
-        phase_id: phaseId
-      })
-      createdSteps.push(savedStep)
-      console.log(`✅ Saved: ${savedStep.title}`)
     }
 
-    return new Response(JSON.stringify({ success: true, created_steps_count: createdSteps.length }), {
+    return new Response(JSON.stringify({ 
+        success: true, 
+        created_steps_count: createdSteps.length,
+        gaps: curriculum.gaps || []
+    }), {
        headers: { ...corsHeaders, "Content-Type": "application/json" }
     })
 
   } catch (err: any) {
     console.error('❌ FATAL ERROR in create-steps:', err)
     return new Response(JSON.stringify({ success: false, error: err.message || "Unspecified server error" }), {
-      status: 200, // Return 200 even on logical error to let client read JSON
+      status: 200, 
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     })
   }
