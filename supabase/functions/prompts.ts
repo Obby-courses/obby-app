@@ -224,12 +224,13 @@ RULES:
 - Output ONLY the search query string.
 - NO quotes, NO explanations, NO intro/outro.
 - Maximum 5-6 words.
-- **USE BROAD, COMMON TERMS**: Use words like "Tutorial", "Guide", "Lesson", "Course" instead of specific technical micro-details.
+- **USE BROAD, COMMON TERMS**: Use words like "Tutorial", "Guide", "Lesson", "Course" for educational steps. 
+- **SHOWCASE EXCEPTION**: If the step intent is to see a result or demonstration (indicated by words like "Demonstration", "Performance", "Showcase", "Example"), use those specific keywords instead of "Tutorial".
 - **AVOID OVER-SPECIFICITY**: Do not include too many adjectives. "Guitar chords tutorial" is better than "Guitar chords for beginners with small hands tutorial".
 - **LANGUAGE**: Detect the language of the provided context (Course/Step) and generate the search query optimized for that language.
 - CRITICAL: Anchor the query to the specific domain context (Course Description).
 
-GOAL: Find a video that covers the *general topic* of the step, not necessarily every single minute detail.
+GOAL: Find a video that covers the *general topic* of the step or shows a clear *demonstration* of the result.
 `;
 
 export const USER_RESOURCE_QUERY_PROMPT = ({
@@ -267,6 +268,7 @@ CRITICAL SELECTION CRITERIA:
 1. **COMPREHENSIVENESS**: Favor videos that cover the *entire* topic broadly over videos that only cover one tiny aspect.
 2. **MATCH**: The video must match the *Core Intent* of the step.
 3. **QUALITY**: Avoid clickbait or low-quality content.
+4. **OUTCOME-ORIENTED**: If the Step Title implies a demonstration, performance, or showcase (e.g., "See it in action", "Demonstration", "Performance"), prioritize videos showing the actual result or execution over instructional tutorials.
 
 RULES:
 - You will receive a Step Context and a list of Video Candidates.
@@ -514,18 +516,21 @@ Decide if this step is better taught via a Video or a Text Webpage.
 // -------------------------------------------------------
 export const MILESTONE_GENERATOR = `
 You are an expert learning designer. Your task is to generate a challenge or milestone that concludes a learning phase.
-This milestone should be a synthesis of all the skills learned in the steps of that phase.
+This milestone should be a synthesis of ONLY the skills explicitly learned in the steps of that phase.
 
 RULES:
-- The milestone must be a practical "Final Boss" challenge.
-- It must require applying the knowledge from the provided steps.
+- The milestone must be a practical challenge based strictly on taught content.
+- It must require applying ONLY the knowledge from the provided steps.
 - The description must be clear, motivating, and provide specific instructions on what to achieve.
 - Detect the language of the phase/steps and respond EXCLUSIVELY in that same language.
+- The search_query MUST be designed to find a demonstration, performance, or real-world example of the challenge (e.g., "A Major chord execution", "Web landing page showcase"). NO tutorials.
 - Return valid JSON matching this schema:
 {
   "title": string,
   "description": string,
-  "milestone_type": "target_metric" | "media_upload" | "external_link" | "text_submission"
+  "milestone_type": "target_metric" | "media_upload" | "external_link" | "text_submission",
+  "search_query": "string - optimized query to find a DEMONSTRATION or PERFORMANCE of this specific challenge (NOT a tutorial, but an example of the result)",
+  "summary": "string - 1-2 sentences explaining what the user should notice in this demonstration"
 }
 `;
 
@@ -542,12 +547,24 @@ PHASE CONTEXT:
 Title: ${phaseTitle}
 Description: ${phaseDescription}
 
-STEPS COMPLETED IN THIS PHASE:
+STEPS COMPLETED IN THIS PHASE (SKILLS TAUGHT):
 ${steps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')}
 
+CRITICAL CONSTRAINTS (VINCOLI CRITICI):
+1. The milestone must test ONLY skills present in "STEPS COMPLETED".
+2. DO NOT assume knowledge beyond what is explicitly taught.
+3. DO NOT introduce new concepts (songs, rhythm, theory, tools) unless taught in the steps.
+4. Difficulty: +10-20% relative to the steps (NOT +100%). It should be a small challenge, not a huge leap.
+
+EXAMPLE (BAD):
+"Play a full song with 5 chords" -> Why: Only 1 chord was taught.
+
+EXAMPLE (GOOD):
+"Play the A Major chord for 60 seconds with correct technique" -> Why: Uses only the taught chord + realistic challenge (duration).
+
 TASK:
-Based on these steps, generate a final "Milestone" challenge. 
-It must be a realistic project or goal that demonstrates mastery of the phase.
+Based strictly on the provided steps, generate a final "Milestone" challenge. 
+It must be a concrete verification of the specific skills taught.
 Return ONLY valid JSON.
 `;
 
@@ -591,10 +608,20 @@ QUERY WRITING RULES:
 ❌ BAD: "advanced programming paradigms" (too vague)
 ❌ BAD: "learn cooking" (no specificity)
 
+PREREQUISITE GAP BINDING RULE:
+If the user message includes a "PREREQUISITE ANALYSIS" section with gaps:
+- Your FIRST themes MUST cover ALL gaps marked as "critical" (severity = critical)
+- These prerequisite themes MUST appear BEFORE any main content themes
+- Each critical gap should map to exactly ONE theme
+- Prerequisite themes should have priority = "essential"
+- After covering all critical gaps, you MAY add themes for "important" gaps if they fit naturally
+- Only AFTER prerequisite themes should you add the main content themes for the phase
+- If no prerequisite gaps are provided, generate themes normally
+
 CONSTRAINTS:
 - Generate MINIMUM 5 themes, MAXIMUM 8
 - At least 3 themes must be "essential" priority
-- Themes must be ordered in logical learning progression
+- Themes must be ordered in logical learning progression (prerequisites first!)
 - No conceptual overlap between themes
 - Queries must match the course language (Italian/English/etc.)
 
@@ -628,15 +655,14 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
   phaseDescription: string
   courseTitle: string
   domain: string
-}) => `PHASE TO ANALYZE:
-Title: "${params.phaseTitle}"
-Description: "${params.phaseDescription || 'Not provided'}"
+  prerequisiteGaps?: Array<{ gap: string; type: string; severity: string; reason: string }>
+}) => {
+  const prerequisiteSection = params.prerequisiteGaps && params.prerequisiteGaps.length > 0
+    ? `\nPREREQUISITE ANALYSIS (from Level 1 - BINDING):\nThe following knowledge gaps were identified. You MUST generate themes to cover CRITICAL gaps FIRST.\n${params.prerequisiteGaps.map(g => `- [${g.severity.toUpperCase()}] [${g.type}] ${g.gap}: ${g.reason}`).join('\n')}\n`
+    : ''
 
-COURSE CONTEXT:
-Course Title: "${params.courseTitle}"
-Domain: ${params.domain}
-
-Generate research themes for this phase following the instructions above.`;
+  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nDescription: "${params.phaseDescription || 'Not provided'}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.`;
+}
 
 // -------------------------------------------------------
 // STEP 8: BATCH DISCOVERY - CURRICULUM ASSEMBLY
@@ -782,4 +808,155 @@ Ensure NO overlap, logical progression, and coverage of all essential themes.
 If existing steps are present, complement them without repetition.
 
 Return your selection in the JSON format specified above.`;
+}
+
+// -------------------------------------------------------
+// LEVEL 1: PRE-PHASE ANALYSIS (Prerequisite Gap Detection)
+// -------------------------------------------------------
+export const PRE_PHASE_ANALYSIS_PROMPT = `You are an expert pedagogical analyst specializing in prerequisite detection for online learning.
+
+Your task is to analyze a course phase BEFORE any content is generated and identify what a learner is ASSUMED to already know.
+
+ANALYSIS CATEGORIES:
+
+1. **ASSUMPTIONS CHECK**: What does this phase title/description implicitly assume the learner already knows?
+
+2. **PHYSICAL PREREQUISITES**: Are there physical skills, motor abilities, or hands-on setup required?
+   Examples: instrument posture, tool handling, body positioning, equipment calibration
+
+3. **CONCEPTUAL PREREQUISITES**: Are there theoretical concepts, terminology, or notation systems that MUST be understood first?
+   Examples: musical notation, programming syntax, cooking terminology, math foundations
+
+4. **TOOL/SETUP PREREQUISITES**: Does the learner need specific tools configured or preparations done?
+   Examples: tuned instrument, IDE installed, ingredients prepared, account created
+
+SEVERITY RULES:
+- "critical": Without this, the learner will be BLOCKED or form BAD HABITS. Must be addressed before main content.
+- "important": Helpful but the learner can muddle through without it. Should be addressed if possible.
+
+MACRO-PHASE CALIBRATION:
+- If macro_phase_title contains "FONDAMENTI" or order_index = 1: Be STRICT. Flag more prerequisites as critical (beginner has zero knowledge).
+- If macro_phase_title contains "AVANZATO" or "MASTERY" or order_index >= 4: Be LENIENT. Assume prior phases covered basics.
+
+CONSTRAINTS:
+- Maximum 5 prerequisite gaps
+- Each gap must be concrete and searchable (not vague like "basic knowledge")
+- Language: Match the language of the phase title/description
+- If the phase is clearly self-contained and needs no prerequisites, set can_proceed_directly to true
+
+OUTPUT FORMAT (JSON only):
+{
+  "user_assumed_knowledge": ["string - what the phase assumes the learner already knows"],
+  "prerequisite_gaps": [
+    {
+      "gap": "string - specific missing skill/knowledge",
+      "type": "physical | conceptual | tool_setup",
+      "severity": "critical | important",
+      "reason": "string - why this matters for this specific phase"
+    }
+  ],
+  "can_proceed_directly": boolean,
+  "recommended_action": "string - brief summary of what should happen"
+}`;
+
+export const USER_PRE_PHASE_ANALYSIS_PROMPT = (params: {
+  phaseTitle: string
+  phaseDescription: string
+  courseTitle: string
+  macroPhaseTitle: string
+  macroPhaseOrderIndex: number
+  completedSteps: Array<{ title: string; description: string }>
+}) => {
+  const stepsContext = params.completedSteps.length > 0
+    ? params.completedSteps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')
+    : '(No previous steps completed - this is the learner\'s starting point)'
+
+  return `PHASE TO ANALYZE:
+Title: "${params.phaseTitle}"
+Description: "${params.phaseDescription || 'Not provided'}"
+
+COURSE CONTEXT:
+Course Title: "${params.courseTitle}"
+Macro-Phase: "${params.macroPhaseTitle}" (order_index: ${params.macroPhaseOrderIndex}/6)
+
+LEARNER'S CURRENT KNOWLEDGE (steps already completed in the course):
+${stepsContext}
+
+TASK:
+Analyze this phase and identify what prerequisites a learner needs BEFORE starting it.
+Consider the macro-phase level (1 = absolute beginner, 6 = expert) when calibrating severity.
+Return JSON following the schema above.`;
+}
+
+// -------------------------------------------------------
+// LEVEL 3: VALIDATION POST-ASSEMBLY
+// -------------------------------------------------------
+export const VALIDATION_PROMPT = `You are a pedagogical quality assurance specialist. Your task is to verify that a generated learning path is SAFE for the target learner.
+
+You will receive:
+1. A list of assembled steps (the proposed curriculum)
+2. A list of prerequisite gaps that were identified earlier
+
+Your job is to CHECK that every CRITICAL prerequisite gap has been addressed by a step that appears BEFORE the first step that needs it.
+
+VALIDATION CHECKLIST:
+□ Every "critical" gap has a corresponding step covering it
+□ Prerequisite steps appear BEFORE the steps that depend on them
+□ Physical prerequisites (posture, setup) come before technique steps
+□ Conceptual prerequisites (terminology, notation) come before steps using that terminology
+
+RULES:
+- Only flag REAL violations (don't be overly strict about "important" gaps)
+- For each violation, suggest exactly WHERE to insert a remedial step and WHAT to search for
+- If all critical gaps are covered, set is_safe to true
+- Language: Match the language of the steps
+
+OUTPUT FORMAT (JSON only):
+{
+  "is_safe": boolean,
+  "violations": [
+    {
+      "step_index": number,
+      "step_title": "string",
+      "problem": "string - what prerequisite is missing",
+      "gap_reference": "string - which prerequisite gap this relates to"
+    }
+  ],
+  "recommended_insertions": [
+    {
+      "insert_before_step_index": number,
+      "new_step_title": "string",
+      "search_query_video": "string",
+      "search_query_web": "string",
+      "rationale": "string"
+    }
+  ],
+  "summary": "string - 1-2 sentence assessment"
+}`;
+
+export const USER_VALIDATION_PROMPT = (params: {
+  steps: Array<{ step_title: string; learning_objective: string; order: number }>
+  prerequisiteGaps: Array<{ gap: string; type: string; severity: string; reason: string }>
+  phaseTitle: string
+}) => {
+  const stepsList = params.steps
+    .map((s) => `${s.order}. "${s.step_title}" — ${s.learning_objective}`)
+    .join('\n')
+
+  const gapsList = params.prerequisiteGaps
+    .map(g => `- [${g.severity.toUpperCase()}] [${g.type}] ${g.gap}: ${g.reason}`)
+    .join('\n')
+
+  return `PHASE: "${params.phaseTitle}"
+
+ASSEMBLED STEPS:
+${stepsList}
+
+PREREQUISITE GAPS IDENTIFIED:
+${gapsList}
+
+TASK:
+Verify that every CRITICAL prerequisite gap is covered by a step that appears before any step that needs it.
+If violations are found, suggest specific insertions with search queries to find remedial content.
+Return JSON following the schema above.`;
 }

@@ -10,6 +10,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
 
   try {
     const { 

@@ -102,7 +102,7 @@ export default function StepItem({
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingBottom: insets.bottom + 40,
+          paddingBottom: insets.bottom + 110, // Increased to accommodate sticky footer
           paddingHorizontal: spacing.lg,
         }}
         showsVerticalScrollIndicator={false}
@@ -218,38 +218,41 @@ export default function StepItem({
                 </View>
               )}
             </View>
-
-            <View style={styles.actionsRow}>
-              {!step.completed ? (
-                <>
-                  <Pressable
-                    onPress={() => onUpdateStatus(step.id, 'skipped')}
-                    style={styles.skipButton}
-                  >
-                    <Text style={{ fontSize: 18 }}>⏭️</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => onUpdateStatus(step.id, 'completed')}
-                    style={styles.completeButton}
-                  >
-                    <Text style={styles.completeButtonText}>COMPLETA</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable
-                  onPress={() => onUpdateStatus(step.id, 'pending')}
-                  style={[styles.completeButton, { backgroundColor: '#E6F7EC', borderWidth: 0 }]}
-                >
-                  <Text style={[styles.completeButtonText, { color: '#1E7F43' }]}>
-                    RIPRISTINA
-                  </Text>
-                </Pressable>
-              )}
-            </View>
           </View>
         </View>
       </ScrollView>
+
+      {/* Sticky Footer Actions */}
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+        <View style={styles.actionsRow}>
+          {!step.completed ? (
+            <>
+              <Pressable
+                onPress={() => onUpdateStatus(step.id, 'skipped')}
+                style={styles.skipButton}
+              >
+                <Text style={{ fontSize: 18 }}>⏭️</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => onUpdateStatus(step.id, 'completed')}
+                style={styles.completeButton}
+              >
+                <Text style={styles.completeButtonText}>COMPLETA</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              onPress={() => onUpdateStatus(step.id, 'pending')}
+              style={[styles.completeButton, { backgroundColor: '#E6F7EC', borderWidth: 0 }]}
+            >
+              <Text style={[styles.completeButtonText, { color: '#1E7F43' }]}>
+                RIPRISTINA
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
 
       <ResourcePreview
         visible={showPreview}
@@ -434,5 +437,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: palette.black,
+  },
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    shadowColor: palette.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 10,
   },
 })

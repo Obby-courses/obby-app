@@ -13,6 +13,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
 
   try {
     const body = await req.json()
@@ -20,10 +21,9 @@ serve(async (req: Request) => {
     const { 
       courseId, 
       phaseId, 
-      phaseTitle,
+      phaseTitle, 
       phaseDescription,
-      orderIndex,
-      steps = []
+      orderIndex
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -42,6 +42,21 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
 
+    // Fetch steps from DB to ensure we have the Source of Truth for skills taught
+    console.log(`Fetching steps for phase ${phaseId}...`)
+    const { data: dbSteps, error: stepsWaitErr } = await supabase
+        .from('steps')
+        .select('title, description, learning_objective') // learning_objective might be in description sometimes, but selecting helps if column exists
+        .eq('phase_id', phaseId)
+        .order('order_index', { ascending: true })
+    
+    if (stepsWaitErr) {
+        console.error("Error fetching steps:", stepsWaitErr)
+    }
+
+    const stepsToUse = dbSteps && dbSteps.length > 0 ? dbSteps : (body.steps || [])
+    console.log(`Using ${stepsToUse.length} steps for context`)
+
     console.log("Generate milestone challenge...")
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -53,7 +68,10 @@ serve(async (req: Request) => {
           { role: 'user', content: USER_MILESTONE_PROMPT({
               phaseTitle,
               phaseDescription: phaseDescription || '',
-              steps
+              steps: stepsToUse.map((s:any) => ({
+                  title: s.title,
+                  description: s.description || s.learning_objective || "" 
+              }))
             })
           },
         ],
@@ -71,8 +89,80 @@ serve(async (req: Request) => {
         throw new Error("AI failed to generate a valid milestone")
     }
 
+    /* ========== Support Resource Search ========== */
+    let supportResource = null
+    const searchQuery = milestoneResult.search_query || `${milestoneResult.title} demonstration performance`
+
+    console.log(`[SEARCH] Looking for support resource: "${searchQuery}"`)
+    
+    try {
+      // 1. Try Video Search
+      const videoRes = await fetch(`${SUPABASE_URL}/functions/v1/search-resources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+        body: JSON.stringify({ 
+          step_title: searchQuery,
+          course_title: phaseTitle, // Using phase as context
+          phase_title: phaseTitle 
+        }),
+      })
+      const videoData = await videoRes.json()
+      
+      if (videoData.success && videoData.video) {
+        console.log(`[SEARCH] Found video: ${videoData.video.title}`)
+        supportResource = {
+          type: 'video',
+          title: videoData.video.title,
+          url: videoData.video.url,
+          thumbnail_url: videoData.video.thumbnail_url,
+          description: videoData.video.description
+        }
+      } else {
+        // 2. Try Web Search if Video fails
+        console.log(`[SEARCH] No video found, trying web search...`)
+        const webRes = await fetch(`${SUPABASE_URL}/functions/v1/search-web-resource`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+          body: JSON.stringify({ query: searchQuery }),
+        })
+        const webData = await webRes.json()
+        
+        if (webData.success && webData.results?.length > 0) {
+          const res = webData.results[0]
+          console.log(`[SEARCH] Found web resource: ${res.title}`)
+          supportResource = {
+            type: 'webpage',
+            title: res.title,
+            url: res.link,
+            thumbnail_url: res.thumbnail_url,
+            description: res.snippet
+          }
+        }
+      }
+    } catch (searchErr) {
+      console.error("[SEARCH ERROR] Support resource search failed:", searchErr)
+    }
+
     // --- Salvataggio DB ---
     console.log("Saving milestone to DB...")
+    
+    // Create resource if found
+    let resourceId = null
+    if (supportResource) {
+      try {
+        const { id } = await getOrCreateResource(supabase, {
+          title: supportResource.title,
+          url: supportResource.url,
+          thumbnail_url: supportResource.thumbnail_url,
+          description: supportResource.description,
+          type: supportResource.type
+        })
+        resourceId = id
+      } catch (resErr) {
+        console.error("[RESOURCE ERROR] Failed to save support resource:", resErr)
+      }
+    }
+
     const { data: savedMilestone, error: dbErr } = await supabase
       .from('milestones')
       .upsert({
@@ -81,10 +171,16 @@ serve(async (req: Request) => {
         order_index: orderIndex,
         title: milestoneResult.title,
         description: milestoneResult.description,
-        milestone_type: milestoneResult.milestone_type || 'text_submission', // Default
+        milestone_type: milestoneResult.milestone_type || 'text_submission',
         completed: false,
-        status: 'pending'
-      }, { onConflict: 'phase_id' }) // Ensure only one per phase
+        status: 'pending',
+        resource_id: resourceId, // Save direct link to resource
+        target_config: {
+          support_resource: supportResource,
+          resource_id: resourceId,
+          pedagogical_summary: milestoneResult.summary
+        }
+      }, { onConflict: 'phase_id' })
       .select().single()
 
     if (dbErr) throw new Error(`DB Milestone Error: ${dbErr.message}`)
@@ -103,3 +199,32 @@ serve(async (req: Request) => {
     })
   }
 })
+
+async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: string }> {
+  // Check if URL already exists
+  const { data: existing } = await supabase
+    .from('resources')
+    .select('id')
+    .eq('url', resource.url)
+    .single()
+  
+  if (existing) {
+    return { id: existing.id }
+  }
+  
+  // Create new resource
+  const { data: newResource, error: createError } = await supabase
+    .from('resources')
+    .insert({
+      title: resource.title,
+      url: resource.url,
+      thumbnail_url: resource.thumbnail_url,
+      summary: resource.description,
+      type: resource.type
+    })
+    .select('id')
+    .single()
+  
+  if (createError) throw new Error(`Resource creation failed: ${createError.message}`)
+  return { id: newResource.id }
+}

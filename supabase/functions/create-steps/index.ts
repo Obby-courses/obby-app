@@ -3,9 +3,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   CURRICULUM_ASSEMBLY_PROMPT,
+  PRE_PHASE_ANALYSIS_PROMPT,
   THEME_DISCOVERY_PROMPT,
   USER_CURRICULUM_ASSEMBLY_PROMPT,
-  USER_THEME_DISCOVERY_PROMPT
+  USER_PRE_PHASE_ANALYSIS_PROMPT,
+  USER_THEME_DISCOVERY_PROMPT,
+  USER_VALIDATION_PROMPT,
+  VALIDATION_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -147,8 +151,7 @@ async function getOrCreateResource(
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-
-  console.log("[VERSION] 2026-02-13 - BATCH DISCOVERY v1.1.2")
+  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
 
   try {
     const body = await req.json()
@@ -159,7 +162,9 @@ serve(async (req: Request) => {
       phaseTitle,
       phaseDescription,
       courseTitle, 
-      courseDescription
+      courseDescription,
+      preview,
+      stepsToSave
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -213,7 +218,130 @@ serve(async (req: Request) => {
     console.log(`[DATA] Found ${phaseSteps.length} existing steps in this phase`)
 
     /* ======================================================
-       PHASE 1: THEME DISCOVERY
+       SCENARIO: SELECTIVE SAVE (stepsToSave provided)
+       ====================================================== */
+    if (stepsToSave && Array.isArray(stepsToSave)) {
+      console.log(`💾 SCENARIO: SAVING ${stepsToSave.length} SELECTED STEPS`)
+      const createdSteps = []
+      let globalOrderOffset = phaseSteps.length
+
+      for (const step of stepsToSave) {
+        try {
+          // 1. Get or Create Resource (The step must contain resource details)
+          if (!step.resource) {
+            console.warn(`[SAVE SKIP] Step '${step.step_title}' missing resource data`)
+            continue
+          }
+
+          const { id: resourceId } = await getOrCreateResource(supabase, step.resource)
+
+          // 2. Create Step
+          const { data: savedStep, error: stepErr } = await supabase
+            .from('steps')
+            .insert({
+              course_id: courseId,
+              phase_id: phaseId,
+              order_index: globalOrderOffset + step.order,
+              title: step.step_title,
+              description: step.learning_objective + (step.rationale ? " " + step.rationale : ""),
+              completed: false,
+              resource_id: resourceId
+            })
+            .select()
+            .single()
+
+          if (stepErr) throw stepErr
+          createdSteps.push(savedStep)
+          console.log(`✅ Saved selected step: ${savedStep.title}`)
+        } catch (err) {
+          console.error(`[SAVE ERROR] Failed to save step '${step.step_title}':`, err)
+        }
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        created_steps_count: createdSteps.length 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      })
+    }
+
+    /* ======================================================
+       PHASE 0: PRE-PHASE ANALYSIS (Level 1)
+       ====================================================== */
+    console.log("🔬 PHASE 0: PRE-PHASE ANALYSIS")
+
+    // Fetch macro-phase context for severity calibration
+    let macroPhaseTitle = 'FONDAMENTI PRATICI'
+    let macroPhaseOrderIndex = 1
+
+    try {
+      const { data: phaseRow } = await supabase
+        .from('phases')
+        .select('macro_phase_id')
+        .eq('id', phaseId)
+        .single()
+
+      if (phaseRow?.macro_phase_id) {
+        const { data: macroData } = await supabase
+          .from('macro_phases')
+          .select('title, order_index')
+          .eq('id', phaseRow.macro_phase_id)
+          .single()
+
+        if (macroData) {
+          macroPhaseTitle = macroData.title
+          macroPhaseOrderIndex = macroData.order_index
+        }
+      }
+    } catch (err) {
+      console.warn('[PHASE 0] Could not fetch macro-phase context, using defaults:', err)
+    }
+
+    console.log(`[PHASE 0] Macro-phase: "${macroPhaseTitle}" (order: ${macroPhaseOrderIndex}/6)`)
+
+    const prePhaseRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: PRE_PHASE_ANALYSIS_PROMPT },
+          {
+            role: 'user',
+            content: USER_PRE_PHASE_ANALYSIS_PROMPT({
+              phaseTitle,
+              phaseDescription: phaseDescription || '',
+              courseTitle: finalCourseTitle,
+              macroPhaseTitle,
+              macroPhaseOrderIndex,
+              completedSteps: (allStepsData || []).map((s: any) => ({ title: s.title, description: s.description || '' }))
+            })
+          }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.4
+      })
+    })
+
+    let prerequisiteGaps: any[] = []
+    let canProceedDirectly = true
+
+    if (prePhaseRes.ok) {
+      const prePhaseData = await prePhaseRes.json()
+      const prePhaseResult = JSON.parse(prePhaseData.choices[0].message.content)
+      prerequisiteGaps = prePhaseResult.prerequisite_gaps || []
+      canProceedDirectly = prePhaseResult.can_proceed_directly ?? true
+
+      console.log(`[PHASE 0] Can proceed directly: ${canProceedDirectly}`)
+      console.log(`[PHASE 0] Prerequisite gaps (${prerequisiteGaps.length}):`,
+        prerequisiteGaps.map((g: any) => `[${g.severity}] ${g.gap}`))
+    } else {
+      console.warn(`[PHASE 0] Pre-phase analysis failed (${prePhaseRes.status}), proceeding without prerequisites`)
+    }
+
+    /* ======================================================
+       PHASE 1: THEME DISCOVERY (Level 2 - Prerequisite-Aware)
        ====================================================== */
     console.log("🔍 PHASE 1: DISCOVERY")
     const discoveryRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -229,7 +357,8 @@ serve(async (req: Request) => {
               phaseTitle,
               phaseDescription: phaseDescription || '',
               courseTitle: finalCourseTitle,
-              domain: detectDomain(finalCourseTitle)
+              domain: detectDomain(finalCourseTitle),
+              prerequisiteGaps: prerequisiteGaps.length > 0 ? prerequisiteGaps : undefined
             })
           }
         ],
@@ -374,8 +503,170 @@ serve(async (req: Request) => {
     const assemblyData = await assemblyRes.json()
     const curriculum = JSON.parse(assemblyData.choices[0].message.content)
     
-    const finalSteps = curriculum.steps || []
+    let finalSteps = curriculum.steps || []
     console.log(`[ASSEMBLY] Planned ${finalSteps.length} steps`)
+
+    /* ======================================================
+       PHASE 3.5: VALIDATION POST-ASSEMBLY (Level 3)
+       ====================================================== */
+    let qualityResourcesPool = qualityResources // Keep reference for potential retry
+
+    if (prerequisiteGaps.length > 0) {
+      console.log("✅ PHASE 3.5: VALIDATION")
+
+      const validationRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: VALIDATION_PROMPT },
+            {
+              role: 'user',
+              content: USER_VALIDATION_PROMPT({
+                steps: finalSteps,
+                prerequisiteGaps,
+                phaseTitle
+              })
+            }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2
+        })
+      })
+
+      if (validationRes.ok) {
+        const validationData = await validationRes.json()
+        const validation = JSON.parse(validationData.choices[0].message.content)
+
+        console.log(`[VALIDATION] is_safe: ${validation.is_safe}`)
+        console.log(`[VALIDATION] Summary: ${validation.summary}`)
+
+        if (!validation.is_safe && validation.recommended_insertions?.length > 0) {
+          console.log(`[VALIDATION] 🔄 ${validation.recommended_insertions.length} insertions needed, starting compensatory search...`)
+
+          // Compensatory search for missing prerequisite resources
+          const compensatoryPromises = validation.recommended_insertions.map(async (insertion: any) => {
+            const compResults: ResourceCandidate[] = []
+
+            try {
+              // Search video
+              if (insertion.search_query_video) {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_RESOURCES_FN}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+                  body: JSON.stringify({
+                    step_title: insertion.search_query_video,
+                    step_description: insertion.rationale,
+                    course_title: finalCourseTitle,
+                    phase_title: phaseTitle
+                  }),
+                })
+                const data = await res.json()
+                if (data.success && data.video) {
+                  compResults.push({
+                    id: crypto.randomUUID(),
+                    theme_id: `prerequisite_${insertion.insert_before_step_index}`,
+                    type: 'video',
+                    title: data.video.title,
+                    url: data.video.url,
+                    description: data.video.description,
+                    thumbnail_url: data.video.thumbnail_url,
+                    metrics: { views: 1000, likes: 10, duration: 600 }
+                  })
+                }
+              }
+
+              // Search web
+              if (insertion.search_query_web) {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_WEB_FN}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+                  body: JSON.stringify({ query: insertion.search_query_web, course_title: finalCourseTitle }),
+                })
+                const data = await res.json()
+                if (data.success && data.results) {
+                  data.results.slice(0, 1).forEach((r: any) => {
+                    compResults.push({
+                      id: crypto.randomUUID(),
+                      theme_id: `prerequisite_${insertion.insert_before_step_index}`,
+                      type: 'webpage',
+                      title: r.title,
+                      url: r.link,
+                      description: r.snippet,
+                      thumbnail_url: r.thumbnail_url
+                    })
+                  })
+                }
+              }
+            } catch (err) {
+              console.error(`[COMPENSATORY SEARCH ERROR]`, err)
+            }
+
+            return { insertion, resources: compResults }
+          })
+
+          const compensatoryResults = await Promise.all(compensatoryPromises)
+
+          // Build prerequisite steps from compensatory results
+          const prerequisiteSteps: any[] = []
+          for (const { insertion, resources } of compensatoryResults) {
+            if (resources.length > 0) {
+              const bestResource = resources[0]
+              qualityResourcesPool = [...qualityResourcesPool, ...resources]
+
+              prerequisiteSteps.push({
+                resource_id: bestResource.id,
+                step_title: insertion.new_step_title,
+                learning_objective: insertion.rationale,
+                order: insertion.insert_before_step_index - 0.5, // Will be re-ordered below
+                rationale: `Prerequisite insertion: ${insertion.rationale}`
+              })
+            }
+          }
+
+          if (prerequisiteSteps.length > 0) {
+            console.log(`[VALIDATION] Inserting ${prerequisiteSteps.length} prerequisite steps`)
+            // Merge prerequisite steps with existing steps, re-order
+            const mergedSteps = [...prerequisiteSteps, ...finalSteps]
+              .sort((a, b) => a.order - b.order)
+              .map((s, i) => ({ ...s, order: i + 1 }))
+            finalSteps = mergedSteps
+            console.log(`[VALIDATION] Final step count after insertion: ${finalSteps.length}`)
+          } else {
+            console.warn('[VALIDATION] Compensatory search found no resources, proceeding with current steps')
+          }
+        }
+      } else {
+        console.warn(`[VALIDATION] Validation call failed (${validationRes.status}), proceeding without validation`)
+      }
+    } else {
+      console.log('[VALIDATION] No prerequisite gaps to validate, skipping Phase 3.5')
+    }
+
+    /* ======================================================
+       PHASE 3.7: PREPARE PREVIEW RESPONSE
+       ====================================================== */
+    const stepsWithResources = finalSteps.map((step: any) => {
+      const resource = qualityResourcesPool.find(r => r.id === step.resource_id)
+      return {
+        ...step,
+        resource: resource // Embed resource data for the frontend
+      }
+    })
+
+    if (preview === true) {
+      console.log("👀 PREVIEW MODE: Returning steps without saving")
+      return new Response(JSON.stringify({
+        success: true,
+        preview: true,
+        steps: stepsWithResources,
+        gaps: curriculum.gaps || [],
+        coverage_analysis: curriculum.coverage_analysis
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      })
+    }
 
     /* ======================================================
        PHASE 4: BATCH SAVE (TRANSACTIONAL-LIKE)
@@ -384,16 +675,13 @@ serve(async (req: Request) => {
 
     const createdSteps = []
     
-    // We'll proceed in a loop essentially acting as a transaction script
-    // If one fails, we stop (simple version). Real atomic batch would need RPC.
-    
     let globalOrderOffset = (allStepsData || []).filter((s:any) => s.phase_id === phaseId).length
 
-    for (const plan of finalSteps) {
-        const resourceCandidate = qualityResources.find(r => r.id === plan.resource_id)
+    for (const plan of stepsWithResources) {
+        const resourceCandidate = plan.resource
         
         if (!resourceCandidate) {
-            console.warn(`[SAVE SKIP] Resource ID ${plan.resource_id} not found in pool`)
+            console.warn(`[SAVE SKIP] Resource data not found for step '${plan.step_title}'`)
             continue
         }
 

@@ -2,6 +2,7 @@ import LoadingOverlay from '@/components/LoadingOverlay'
 import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import {
+    Linking,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -17,6 +18,17 @@ type MilestoneItemProps = {
         description: string
         milestone_type: string
         phase_id: string
+        resource_id?: string | null
+        target_config?: {
+            support_resource?: {
+                type: 'video' | 'webpage'
+                title: string
+                url: string
+                thumbnail_url?: string
+                description?: string
+            }
+            pedagogical_summary?: string
+        }
     }
     courseId: string
     nextPhaseId?: string | null
@@ -167,6 +179,41 @@ export default function MilestoneItem({
                         </Text>
                     </View>
 
+                    {localMilestone.target_config?.pedagogical_summary && (
+                        <View style={styles.supportSection}>
+                            <Text style={styles.supportLabel}>PER COMINCIARE:</Text>
+                            <Text style={styles.supportSummary}>
+                                {localMilestone.target_config.pedagogical_summary}
+                            </Text>
+
+                            {localMilestone.target_config.support_resource && (
+                                <Pressable
+                                    onPress={() => {
+                                        const url = localMilestone.target_config?.support_resource?.url;
+                                        if (url) {
+                                            Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
+                                        }
+                                    }}
+                                    style={styles.resourceCard}
+                                >
+                                    <View style={styles.resourceTypeIcon}>
+                                        <Text style={{ fontSize: 20 }}>
+                                            {localMilestone.target_config.support_resource.type === 'video' ? '📺' : '🔗'}
+                                        </Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.resourceTitle} numberOfLines={2}>
+                                            {localMilestone.target_config.support_resource.title}
+                                        </Text>
+                                        <Text style={styles.resourceSource}>
+                                            {localMilestone.target_config.support_resource.type === 'video' ? 'YouTube Video' : 'Articolo Web'}
+                                        </Text>
+                                    </View>
+                                </Pressable>
+                            )}
+                        </View>
+                    )}
+
                     <View style={{ flex: 1, minHeight: 60 }} />
 
                     <Pressable
@@ -263,5 +310,57 @@ const styles = StyleSheet.create({
         fontWeight: '900',
         fontSize: 14,
         letterSpacing: 1,
+    },
+    supportSection: {
+        marginTop: 32,
+        paddingTop: 32,
+        borderTopWidth: 1,
+        borderTopColor: palette.border,
+    },
+    supportLabel: {
+        ...typography.label,
+        fontSize: 10,
+        color: palette.gray,
+        marginBottom: 12,
+        letterSpacing: 1.5,
+    },
+    supportSummary: {
+        ...typography.body,
+        fontSize: 15,
+        color: '#555',
+        fontStyle: 'italic',
+        lineHeight: 22,
+        marginBottom: 20,
+    },
+    resourceCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        padding: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: palette.border,
+        gap: 16,
+    },
+    resourceTypeIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: palette.border,
+    },
+    resourceTitle: {
+        ...typography.body,
+        fontSize: 14,
+        fontWeight: '700',
+        color: palette.black,
+    },
+    resourceSource: {
+        ...typography.label,
+        fontSize: 10,
+        marginTop: 2,
     },
 })
