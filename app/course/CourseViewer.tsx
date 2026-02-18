@@ -82,6 +82,7 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
     const [daysPerStep, setDaysPerStep] = useState<number>(2.33)
     const [courseCreatedAt, setCourseCreatedAt] = useState<string>('')
     const [phases, setPhases] = useState<Phase[]>([])
+    const [macroPhases, setMacroPhases] = useState<any[]>([])
     const [steps, setSteps] = useState<Step[]>([])
     const [milestones, setMilestones] = useState<Milestone[]>([])
 
@@ -105,10 +106,10 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
     }, [courseId])
 
     useEffect(() => {
-        if (phases.length) {
+        if (phases.length && macroPhases.length) {
             loadStepsAndMilestones()
         }
-    }, [phases])
+    }, [phases, macroPhases])
 
     useEffect(() => {
         if (mapItems.length > 0 && !initialized.current) {
@@ -151,6 +152,15 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
             if (data.days_per_step) setDaysPerStep(data.days_per_step)
             if (data.created_at) setCourseCreatedAt(data.created_at)
         }
+
+        // Fetch macro phases as well for ordering
+        const { data: mData } = await supabase
+            .from('macro_phases')
+            .select('id, order_index')
+            .eq('course_id', courseId)
+            .order('order_index')
+
+        if (mData) setMacroPhases(mData)
     }
 
     async function loadPhases() {
@@ -158,9 +168,10 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
             .from('phases')
             .select('id, title, order_index, macro_phase_id')
             .eq('course_id', courseId)
-            .order('order_index')
 
         if (!data) return
+
+        // Sorting will be handled in memory using macroPhases
         setPhases(data)
     }
 
@@ -212,11 +223,19 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
             global_index: 0,
         }))
 
-        // Sort steps globally by Phase Order then Step Order
+        // Sort steps globally by Macro Order then Phase Order then Step Order
         const sortedSteps = normalizedSteps.sort((a, b) => {
             const phaseA = phases.find(p => p.id === a.phase_id)
             const phaseB = phases.find(p => p.id === b.phase_id)
             if (!phaseA || !phaseB) return 0
+
+            const macroA = macroPhases.find(m => m.id === phaseA.macro_phase_id)
+            const macroB = macroPhases.find(m => m.id === phaseB.macro_phase_id)
+
+            if (macroA && macroB && macroA.order_index !== macroB.order_index) {
+                return macroA.order_index - macroB.order_index
+            }
+
             if (phaseA.order_index !== phaseB.order_index) return phaseA.order_index - phaseB.order_index
             return a.order_index - b.order_index
         }).map((step, idx) => ({ ...step, global_index: idx + 1 }))
@@ -230,17 +249,18 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
 
         const firstIncompletePhase = getActivePhase(phases, allSteps)
 
-        // Find current macro_phase_id
         const currentMacroPhaseId = firstIncompletePhase?.macro_phase_id || phases[phases.length - 1]?.macro_phase_id
+        const currentMacroOrder = macroPhases.find(m => m.id === currentMacroPhaseId)?.order_index || 0
 
-        // Phases to show: any phase with steps OR any phase belonging to the current/past macro-phases
-        // Actually, simple rule: show all phases up to the LAST phase of the current macro-phase.
-
-        // Find phases belonging to current macro-phase
-        const macroPhasePhases = phases.filter(p => p.macro_phase_id === currentMacroPhaseId)
-        const maxMacroOrder = Math.max(...macroPhasePhases.map(p => p.order_index))
-
-        const visiblePhases = phases.filter(p => p.order_index <= maxMacroOrder)
+        const visiblePhases = [...phases].sort((a, b) => {
+            const m1 = macroPhases.find(m => m.id === a.macro_phase_id)
+            const m2 = macroPhases.find(m => m.id === b.macro_phase_id)
+            if (m1 && m2 && m1.order_index !== m2.order_index) return m1.order_index - m2.order_index
+            return a.order_index - b.order_index
+        }).filter(p => {
+            const m = macroPhases.find(m => m.id === p.macro_phase_id)
+            return m && m.order_index <= currentMacroOrder
+        })
 
         visiblePhases.forEach(p => {
             const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
@@ -534,7 +554,18 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
 
                         {selectedMilestone && (() => {
                             const currentPhase = phases.find(ph => ph.id === selectedMilestone.phase_id)
-                            const nextPhase = phases.find(p => p.order_index === (currentPhase?.order_index || 0) + 1)
+
+                            // Find all phases sorted globally
+                            const sortedPhasesList = [...phases].sort((a, b) => {
+                                const m1 = macroPhases.find(m => m.id === a.macro_phase_id)
+                                const m2 = macroPhases.find(m => m.id === b.macro_phase_id)
+                                if (m1 && m2 && m1.order_index !== m2.order_index) return m1.order_index - m2.order_index
+                                return a.order_index - b.order_index
+                            })
+
+                            const currentIndex = sortedPhasesList.findIndex(p => p.id === currentPhase?.id)
+                            const nextPhase = currentIndex !== -1 && currentIndex < sortedPhasesList.length - 1 ? sortedPhasesList[currentIndex + 1] : null
+
                             const isNextPhaseGenerated = nextPhase ? steps.some(s => s.phase_id === nextPhase.id) : false
 
                             return (

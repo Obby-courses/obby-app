@@ -22,7 +22,7 @@ serve(async (req: Request) => {
       courseId, 
       phaseId, 
       phaseTitle, 
-      phaseDescription,
+      phaseKeywords,
       orderIndex
     } = body
 
@@ -42,11 +42,21 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
 
-    // Fetch steps from DB to ensure we have the Source of Truth for skills taught
-    console.log(`Fetching steps for phase ${phaseId}...`)
+    // Fetch steps and keywords from DB
+    console.log(`Fetching steps and metadata for phase ${phaseId}...`)
+    const { data: dbPhase, error: phaseErr } = await supabase
+        .from('phases')
+        .select('keywords')
+        .eq('id', phaseId)
+        .single()
+        
+    if (dbPhase?.keywords && !phaseKeywords) {
+        phaseKeywords = dbPhase.keywords
+    }
+
     const { data: dbSteps, error: stepsWaitErr } = await supabase
         .from('steps')
-        .select('title, description, learning_objective') // learning_objective might be in description sometimes, but selecting helps if column exists
+        .select('title, description, learning_objective')
         .eq('phase_id', phaseId)
         .order('order_index', { ascending: true })
     
@@ -67,7 +77,7 @@ serve(async (req: Request) => {
           { role: 'system', content: MILESTONE_GENERATOR },
           { role: 'user', content: USER_MILESTONE_PROMPT({
               phaseTitle,
-              phaseDescription: phaseDescription || '',
+              phaseKeywords: phaseKeywords || [],
               steps: stepsToUse.map((s:any) => ({
                   title: s.title,
                   description: s.description || s.learning_objective || "" 
@@ -201,15 +211,17 @@ serve(async (req: Request) => {
 })
 
 async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: string }> {
+  const cleanUrl = resource.url.trim()
+  
   // Check if URL already exists
   const { data: existing } = await supabase
     .from('resources')
     .select('id')
-    .eq('url', resource.url)
-    .single()
+    .eq('url', cleanUrl)
+    .limit(1)
   
-  if (existing) {
-    return { id: existing.id }
+  if (existing && existing.length > 0) {
+    return { id: existing[0].id }
   }
   
   // Create new resource
@@ -217,7 +229,7 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     .from('resources')
     .insert({
       title: resource.title,
-      url: resource.url,
+      url: cleanUrl,
       thumbnail_url: resource.thumbnail_url,
       summary: resource.description,
       type: resource.type
@@ -225,6 +237,12 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     .select('id')
     .single()
   
-  if (createError) throw new Error(`Resource creation failed: ${createError.message}`)
+  if (createError) {
+    if (createError.code === '23505') {
+       const { data: retry } = await supabase.from('resources').select('id').eq('url', cleanUrl).limit(1)
+       if (retry?.[0]) return { id: retry[0].id }
+    }
+    throw new Error(`Resource creation failed: ${createError.message}`)
+  }
   return { id: newResource.id }
 }

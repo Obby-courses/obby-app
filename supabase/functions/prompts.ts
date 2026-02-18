@@ -69,14 +69,12 @@ CRITICAL INSTRUCTIONS:
   ✅ Good: "Your First Complete Song", "Build an Interactive Calculator"
   ❌ Bad: "Learning to Play Songs", "Understanding Calculators"
   
-- **Descriptions**: Explain the CONCRETE, VERIFIABLE outcome the learner will achieve
-  ✅ Good: "You will play 'Knockin' on Heaven's Door' from start to finish using 3 chords"
-  ❌ Bad: "You will learn to play simple songs"
-
+- **Keywords**: Generate 5-8 technical keywords/concepts that the learner must master in this phase.
+  ✅ Good: ["Grip", "Stance", "Pivot", "Backswing", "Follow-through"]
+  
 - **Granularity**: Each phase should have MINIMAL difficulty gap from the previous one
   
 - **Theory is OK**: Phases can be theoretical IF they serve a practical outcome
-  Example: "Understanding Music Theory Basics" is OK if followed by "Apply Theory to Compose Melodies"
 
 - **Domain Specificity**: Use technical terminology specific to the course domain
 
@@ -91,7 +89,7 @@ You MUST output valid JSON that matches EXACTLY this schema:
     {
       "order_index": number,
       "title": string,
-      "description": string,
+      "keywords": string[],
       "intent": string
     }
   ]
@@ -185,12 +183,12 @@ export const USER_STEP_PROMPT = ({
   courseTitle,
   courseDescription,
   phaseTitle,
-  phaseDescription
+  phaseKeywords
 }: {
   courseTitle?: string
   courseDescription?: string
   phaseTitle: string
-  phaseDescription?: string
+  phaseKeywords: string[]
 }) => `
 COURSE CONTEXT:
 ${courseTitle || ''}
@@ -198,16 +196,16 @@ ${courseDescription || ''}
 
 PHASE TO DECONSTRUCT:
 Title: ${phaseTitle}
-Description: ${phaseDescription || ''}
+Keywords: ${Array.isArray(phaseKeywords) ? phaseKeywords.join(", ") : phaseKeywords}
 
 TASK:
 Generate between 2 and 4 operational steps. 
-The "PHASE DESCRIPTION" contains specific instructions on what must be learned/practiced. Deconstruct it into logical steps.
+The "PHASE KEYWORDS" contain the technical core of what must be learned/practiced. Deconstruct them into logical steps.
 
 RULES:
 - Steps must be actionable and technical.
-- Derivate content directly from the phase description.
-- Do NOT repeat the phase description text.
+- Derivate content directly from the phase keywords.
+- Do NOT repeat the keywords text.
 
 Return ONLY valid JSON in the required format.
 `;
@@ -330,16 +328,16 @@ Schema:
 
 export const USER_PHASE_COMPLETION_PROMPT = ({
   phaseTitle,
-  phaseDescription,
+  phaseKeywords,
   existingSteps
 }: {
   phaseTitle: string
-  phaseDescription: string
+  phaseKeywords: string[]
   existingSteps: Array<{ title: string; description: string }>
 }) => `
 PHASE GOAL:
 Title: ${phaseTitle}
-Description: ${phaseDescription}
+Keywords: ${Array.isArray(phaseKeywords) ? phaseKeywords.join(", ") : phaseKeywords}
 
 EXISTING STEPS (${existingSteps.length}):
 ${existingSteps.length === 0 ? '(No steps created yet)' : existingSteps.map((s, i) => `${i + 1}. ${s.title}\n   ${s.description}`).join('\n\n')}
@@ -390,19 +388,22 @@ Schema:
 export const USER_STEP_INTENT_PROMPT = ({
   courseTitle,
   phaseTitle,
-  phaseDescription,
+  phaseKeywords,
   existingSteps
 }: {
   courseTitle: string
   phaseTitle: string
-  phaseDescription: string
+  phaseKeywords: string[]
   existingSteps: Array<{ title: string; description: string }>
-}) => `
+}) => {
+  const keywordsStr = Array.isArray(phaseKeywords) ? phaseKeywords.join(", ") : phaseKeywords;
+
+  return `
 COURSE: ${courseTitle}
 
 PHASE GOAL:
 Title: ${phaseTitle}
-Description: ${phaseDescription}
+Keywords: ${keywordsStr}
 
 EXISTING STEPS (${existingSteps.length}):
 ${existingSteps.length === 0 ? '(None yet - this will be the first step)' : existingSteps.map((s, i) => `${i + 1}. ${s.title}\n   ${s.description}`).join('\n\n')}
@@ -416,6 +417,7 @@ Identify the NEXT logical step following the micro-progression chain:
 Generate the intent for the NEXT step.
 Return JSON with "intent" and "search_keywords".
 `;
+}
 
 // -------------------------------------------------------
 // ITERATIVE STEP GENERATION: Resource-Based Step Creator
@@ -536,24 +538,27 @@ RULES:
 
 export const USER_MILESTONE_PROMPT = ({
   phaseTitle,
-  phaseDescription,
+  phaseKeywords,
   steps
 }: {
   phaseTitle: string
-  phaseDescription: string
+  phaseKeywords: string[]
   steps: Array<{ title: string; description: string }>
-}) => `
+}) => {
+  const keywordsStr = Array.isArray(phaseKeywords) ? phaseKeywords.join(", ") : phaseKeywords;
+
+  return `
 PHASE CONTEXT:
 Title: ${phaseTitle}
-Description: ${phaseDescription}
+Keywords: ${keywordsStr}
 
 STEPS COMPLETED IN THIS PHASE (SKILLS TAUGHT):
 ${steps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')}
 
 CRITICAL CONSTRAINTS (VINCOLI CRITICI):
-1. The milestone must test ONLY skills present in "STEPS COMPLETED".
-2. DO NOT assume knowledge beyond what is explicitly taught.
-3. DO NOT introduce new concepts (songs, rhythm, theory, tools) unless taught in the steps.
+1. The milestone must test ONLY skills present in "STEPS COMPLETED" and "PHASE KEYWORDS".
+2. DO NOT assume knowledge beyond what is explicitly taught or listed in keywords.
+3. DO NOT introduce new concepts (songs, rhythm, theory, tools) unless taught in the steps or present in keywords.
 4. Difficulty: +10-20% relative to the steps (NOT +100%). It should be a small challenge, not a huge leap.
 
 EXAMPLE (BAD):
@@ -563,10 +568,11 @@ EXAMPLE (GOOD):
 "Play the A Major chord for 60 seconds with correct technique" -> Why: Uses only the taught chord + realistic challenge (duration).
 
 TASK:
-Based strictly on the provided steps, generate a final "Milestone" challenge. 
+Based strictly on the provided steps and keywords, generate a final "Milestone" challenge. 
 It must be a concrete verification of the specific skills taught.
 Return ONLY valid JSON.
 `;
+}
 
 // -------------------------------------------------------
 // STEP 7: BATCH DISCOVERY - THEME DISCOVERY
@@ -652,7 +658,7 @@ OUTPUT FORMAT (JSON only, no additional text):
 
 export const USER_THEME_DISCOVERY_PROMPT = (params: {
   phaseTitle: string
-  phaseDescription: string
+  phaseKeywords: string[]
   courseTitle: string
   domain: string
   prerequisiteGaps?: Array<{ gap: string; type: string; severity: string; reason: string }>
@@ -661,7 +667,9 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
     ? `\nPREREQUISITE ANALYSIS (from Level 1 - BINDING):\nThe following knowledge gaps were identified. You MUST generate themes to cover CRITICAL gaps FIRST.\n${params.prerequisiteGaps.map(g => `- [${g.severity.toUpperCase()}] [${g.type}] ${g.gap}: ${g.reason}`).join('\n')}\n`
     : ''
 
-  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nDescription: "${params.phaseDescription || 'Not provided'}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.`;
+  const keywordsStr = Array.isArray(params.phaseKeywords) ? params.phaseKeywords.join(", ") : params.phaseKeywords;
+
+  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nKeywords: "${keywordsStr}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.`;
 }
 
 // -------------------------------------------------------
@@ -819,7 +827,7 @@ Your task is to analyze a course phase BEFORE any content is generated and ident
 
 ANALYSIS CATEGORIES:
 
-1. **ASSUMPTIONS CHECK**: What does this phase title/description implicitly assume the learner already knows?
+1. **ASSUMPTIONS CHECK**: What does this phase title/keywords implicitly assume the learner already knows?
 
 2. **PHYSICAL PREREQUISITES**: Are there physical skills, motor abilities, or hands-on setup required?
    Examples: instrument posture, tool handling, body positioning, equipment calibration
@@ -841,7 +849,7 @@ MACRO-PHASE CALIBRATION:
 CONSTRAINTS:
 - Maximum 5 prerequisite gaps
 - Each gap must be concrete and searchable (not vague like "basic knowledge")
-- Language: Match the language of the phase title/description
+- Language: Match the language of the phase title/keywords
 - If the phase is clearly self-contained and needs no prerequisites, set can_proceed_directly to true
 
 OUTPUT FORMAT (JSON only):
@@ -861,7 +869,7 @@ OUTPUT FORMAT (JSON only):
 
 export const USER_PRE_PHASE_ANALYSIS_PROMPT = (params: {
   phaseTitle: string
-  phaseDescription: string
+  phaseKeywords: string[]
   courseTitle: string
   macroPhaseTitle: string
   macroPhaseOrderIndex: number
@@ -871,9 +879,11 @@ export const USER_PRE_PHASE_ANALYSIS_PROMPT = (params: {
     ? params.completedSteps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')
     : '(No previous steps completed - this is the learner\'s starting point)'
 
+  const keywordsStr = Array.isArray(params.phaseKeywords) ? params.phaseKeywords.join(", ") : params.phaseKeywords;
+
   return `PHASE TO ANALYZE:
 Title: "${params.phaseTitle}"
-Description: "${params.phaseDescription || 'Not provided'}"
+Keywords: "${keywordsStr}"
 
 COURSE CONTEXT:
 Course Title: "${params.courseTitle}"

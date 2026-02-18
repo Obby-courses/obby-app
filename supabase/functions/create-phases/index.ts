@@ -91,7 +91,7 @@ serve(async (req: Request) => {
           course_id: courseId,
           macro_phase_id: macroPhaseId,
           title: s.title,
-          description: s.description || "",
+          keywords: s.keywords || [],
           order_index: s.order_index || index + 1
         }))
       )

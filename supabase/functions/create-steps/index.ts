@@ -2,14 +2,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  CURRICULUM_ASSEMBLY_PROMPT,
-  PRE_PHASE_ANALYSIS_PROMPT,
-  THEME_DISCOVERY_PROMPT,
-  USER_CURRICULUM_ASSEMBLY_PROMPT,
-  USER_PRE_PHASE_ANALYSIS_PROMPT,
-  USER_THEME_DISCOVERY_PROMPT,
-  USER_VALIDATION_PROMPT,
-  VALIDATION_PROMPT
+    CURRICULUM_ASSEMBLY_PROMPT,
+    PRE_PHASE_ANALYSIS_PROMPT,
+    THEME_DISCOVERY_PROMPT,
+    USER_CURRICULUM_ASSEMBLY_PROMPT,
+    USER_PRE_PHASE_ANALYSIS_PROMPT,
+    USER_THEME_DISCOVERY_PROMPT,
+    USER_VALIDATION_PROMPT,
+    VALIDATION_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -113,16 +113,18 @@ async function getOrCreateResource(
   supabase: any,
   resource: ResourceCandidate
 ): Promise<{ id: string }> {
-  // Check if URL already exists
+  const cleanUrl = resource.url.trim()
+  
+  // Check if URL already exists - use .limit(1) to avoid .single() error on duplicates
   const { data: existing, error: checkError } = await supabase
     .from('resources')
     .select('id')
-    .eq('url', resource.url)
-    .single()
+    .eq('url', cleanUrl)
+    .limit(1)
   
-  if (existing) {
-    console.log(`[DEDUP] Resource already exists: ${resource.url}`)
-    return { id: existing.id }
+  if (existing && existing.length > 0) {
+    console.log(`[DEDUP] Resource already exists: ${cleanUrl}`)
+    return { id: existing[0].id }
   }
   
   // Create new resource
@@ -130,7 +132,7 @@ async function getOrCreateResource(
     .from('resources')
     .insert({
       title: resource.title,
-      url: resource.url,
+      url: cleanUrl,
       thumbnail_url: resource.thumbnail_url,
       summary: resource.description,
       type: resource.type
@@ -139,6 +141,11 @@ async function getOrCreateResource(
     .single()
   
   if (createError) {
+    // Race condition check: if another process inserted it just now
+    if (createError.code === '23505') { // Unique constraint violation if exists
+       const { data: retry } = await supabase.from('resources').select('id').eq('url', cleanUrl).limit(1)
+       if (retry?.[0]) return { id: retry[0].id }
+    }
     throw new Error(`Failed to create resource: ${createError.message}`)
   }
   
@@ -160,7 +167,7 @@ serve(async (req: Request) => {
       courseId, 
       phaseId, 
       phaseTitle,
-      phaseDescription,
+      phaseKeywords,
       courseTitle, 
       courseDescription,
       preview,
@@ -278,7 +285,7 @@ serve(async (req: Request) => {
     try {
       const { data: phaseRow } = await supabase
         .from('phases')
-        .select('macro_phase_id')
+        .select('macro_phase_id, keywords')
         .eq('id', phaseId)
         .single()
 
@@ -293,6 +300,12 @@ serve(async (req: Request) => {
           macroPhaseTitle = macroData.title
           macroPhaseOrderIndex = macroData.order_index
         }
+      }
+      
+      if (phaseRow?.keywords && !phaseKeywords) {
+        // Fallback if keywords not in body
+        console.log("[PHASE 0] Using keywords from DB")
+        phaseKeywords = phaseRow.keywords
       }
     } catch (err) {
       console.warn('[PHASE 0] Could not fetch macro-phase context, using defaults:', err)
@@ -311,7 +324,7 @@ serve(async (req: Request) => {
             role: 'user',
             content: USER_PRE_PHASE_ANALYSIS_PROMPT({
               phaseTitle,
-              phaseDescription: phaseDescription || '',
+              phaseKeywords: phaseKeywords || [],
               courseTitle: finalCourseTitle,
               macroPhaseTitle,
               macroPhaseOrderIndex,
@@ -319,7 +332,7 @@ serve(async (req: Request) => {
             })
           }
         ],
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
         temperature: 0.4
       })
     })
@@ -355,7 +368,7 @@ serve(async (req: Request) => {
             role: 'user', 
             content: USER_THEME_DISCOVERY_PROMPT({
               phaseTitle,
-              phaseDescription: phaseDescription || '',
+              phaseKeywords: phaseKeywords || [],
               courseTitle: finalCourseTitle,
               domain: detectDomain(finalCourseTitle),
               prerequisiteGaps: prerequisiteGaps.length > 0 ? prerequisiteGaps : undefined
@@ -399,6 +412,7 @@ serve(async (req: Request) => {
                     phase_title: phaseTitle 
                 }),
             })
+            if (!res.ok) throw new Error(`Search Resources (Video) Error: ${res.status} - ${await res.text()}`)
             const data = await res.json()
             if (data.success && data.video) {
                 results.push({
@@ -487,7 +501,7 @@ serve(async (req: Request) => {
             role: 'user', 
             content: USER_CURRICULUM_ASSEMBLY_PROMPT({
               phaseTitle,
-              phaseDescription: phaseDescription || '',
+              phaseKeywords: phaseKeywords || [],
               themes: themes,
               candidateResources: qualityResources,
               existingSteps: phaseSteps
@@ -727,7 +741,7 @@ serve(async (req: Request) => {
   } catch (err: any) {
     console.error('❌ FATAL ERROR in create-steps:', err)
     return new Response(JSON.stringify({ success: false, error: err.message || "Unspecified server error" }), {
-      status: 200, 
+      status: 500, 
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     })
   }

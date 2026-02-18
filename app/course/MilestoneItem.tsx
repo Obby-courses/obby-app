@@ -1,13 +1,13 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
+import ResourcePreview from '@/components/ResourcePreview'
 import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import {
-    Linking,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -52,6 +52,12 @@ export default function MilestoneItem({
     const [isGenerating, setIsGenerating] = useState(false)
     const [loadingStatus, setLoadingStatus] = useState<any>('GENERATING_MILESTONE')
     const [error, setError] = useState<string | null>(null)
+    const [previewData, setPreviewData] = useState<{ visible: boolean, type: string, url: string, resourceId?: string }>({
+        visible: false,
+        type: 'video',
+        url: '',
+        resourceId: undefined
+    })
 
     React.useEffect(() => {
         if ((milestone as any).isVirtual) {
@@ -128,15 +134,6 @@ export default function MilestoneItem({
 
             if (!res.ok) throw new Error('Errore nella creazione degli step')
 
-            await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-                },
-                body: JSON.stringify({ phaseId: nextPhaseId }),
-            })
-
             const elapsed = Date.now() - startTime
             if (elapsed < 1500) await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
 
@@ -153,7 +150,7 @@ export default function MilestoneItem({
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{
-                    paddingBottom: insets.bottom + 40,
+                    paddingBottom: insets.bottom + 120, // Aumentato per footer sticky
                     paddingHorizontal: spacing.lg,
                 }}
                 showsVerticalScrollIndicator={false}
@@ -189,9 +186,18 @@ export default function MilestoneItem({
                             {localMilestone.target_config.support_resource && (
                                 <Pressable
                                     onPress={() => {
-                                        const url = localMilestone.target_config?.support_resource?.url;
-                                        if (url) {
-                                            Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
+                                        const res = localMilestone.target_config?.support_resource;
+                                        if (res?.url) {
+                                            setPreviewData({
+                                                visible: true,
+                                                type: res.type === 'video' ? 'youtube' : 'webpage',
+                                                url: res.url,
+                                                // Support resources in milestones are often JSON blobs, 
+                                                // they might not have a database ID in 'resources' table if they are just embedded config.
+                                                // If they DO come from resources table, we should pass ID.
+                                                // For now, let's pass milestone.resource_id if it matches, otherwise undefined.
+                                                resourceId: milestone.resource_id || undefined
+                                            })
                                         }
                                     }}
                                     style={styles.resourceCard}
@@ -214,20 +220,33 @@ export default function MilestoneItem({
                         </View>
                     )}
 
-                    <View style={{ flex: 1, minHeight: 60 }} />
-
-                    <Pressable
-                        onPress={handleStartNextPhase}
-                        disabled={isGenerating}
-                        style={[styles.button, { backgroundColor: courseColor === palette.black ? palette.black : courseColor }, isGenerating && { opacity: 0.6 }]}
-                    >
-                        <Text style={styles.buttonText}>
-                            {nextPhaseTitle ? `PROSSIMA FASE: ${nextPhaseTitle.toUpperCase()}` : 'COMPLETA PERCORSO'}
-                        </Text>
-                    </Pressable>
+                    <View style={{ height: 20 }} />
                 </View>
             </ScrollView>
+
+            <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+                <Pressable
+                    onPress={handleStartNextPhase}
+                    disabled={isGenerating}
+                    style={[
+                        styles.button,
+                        { backgroundColor: courseColor === palette.black ? palette.black : courseColor },
+                        isGenerating && { opacity: 0.6 }
+                    ]}
+                >
+                    <Text style={[styles.buttonText, { color: courseColor === palette.black ? palette.white : palette.black }]}>
+                        {nextPhaseTitle ? 'NUOVA FASE' : 'COMPLETA PERCORSO'}
+                    </Text>
+                </Pressable>
+            </View>
             <LoadingOverlay visible={isGenerating} status={loadingStatus} />
+            <ResourcePreview
+                visible={previewData.visible}
+                onClose={() => setPreviewData(prev => ({ ...prev, visible: false }))}
+                type={previewData.type}
+                url={previewData.url}
+                resourceId={previewData.resourceId}
+            />
         </View>
     )
 }
@@ -305,11 +324,26 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     buttonText: {
-        color: palette.black,
         textAlign: 'center',
         fontWeight: '900',
         fontSize: 14,
         letterSpacing: 1,
+    },
+    stickyFooter: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        paddingTop: spacing.md,
+        paddingHorizontal: spacing.lg,
+        borderTopWidth: 1,
+        borderTopColor: palette.border,
+        shadowColor: palette.black,
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 10,
     },
     supportSection: {
         marginTop: 32,

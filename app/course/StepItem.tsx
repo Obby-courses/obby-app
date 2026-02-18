@@ -1,14 +1,15 @@
 import ResourcePreview from '@/components/ResourcePreview'
+import { supabase } from '@/lib/supabase'
 import { palette, spacing, typography } from '@/lib/theme'
 import React, { useState } from 'react'
 import {
   Image,
-  Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -61,7 +62,14 @@ export default function StepItem({
   onPrev,
 }: StepItemProps) {
   const insets = useSafeAreaInsets()
-  const [showPreview, setShowPreview] = useState(false)
+  const [previewData, setPreviewData] = useState<{ visible: boolean, type: string, url: string, resourceId?: string }>({
+    visible: false,
+    type: 'youtube',
+    url: '',
+    resourceId: undefined
+  })
+  const [showRatingPopup, setShowRatingPopup] = useState(false)
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false)
 
   const hasResource = !!step.resource
 
@@ -97,6 +105,33 @@ export default function StepItem({
 
   const progressColor = remainingProgress > 0.5 ? palette.green : (remainingProgress > 0.2 ? palette.yellow : '#FF4444')
 
+  const handleCompletePress = () => {
+    if (hasResource && step.resource?.id) {
+      setShowRatingPopup(true)
+    } else {
+      onUpdateStatus(step.id, 'completed')
+    }
+  }
+
+  const handleSubmitRating = async (rating: number) => {
+    setIsSubmittingRating(true)
+    try {
+      if (step.resource?.id) {
+        const { error } = await supabase.rpc('rate_resource', {
+          resource_id: step.resource.id,
+          rating: rating
+        })
+        if (error) console.error("Error rating resource:", error)
+      }
+    } catch (err) {
+      console.error("Failed to rate", err)
+    } finally {
+      setIsSubmittingRating(false)
+      setShowRatingPopup(false)
+      onUpdateStatus(step.id, 'completed')
+    }
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -109,9 +144,14 @@ export default function StepItem({
       >
         <View style={styles.card}>
           <View style={styles.topSection}>
-            {hasResource && isYoutubeResource(step.resource) && (
+            {hasResource && (
               <Pressable
-                onPress={() => setShowPreview(true)}
+                onPress={() => setPreviewData({
+                  visible: true,
+                  type: step.resource?.type || 'youtube',
+                  url: step.resource?.url || '',
+                  resourceId: step.resource?.id
+                })}
                 style={styles.thumbnailContainer}
               >
                 {step.resource?.thumbnail_url ? (
@@ -122,11 +162,15 @@ export default function StepItem({
                   />
                 ) : (
                   <View style={styles.thumbnailPlaceholder}>
-                    <Text style={{ fontSize: 32 }}>📺</Text>
+                    <Text style={{ fontSize: 32 }}>
+                      {isYoutubeResource(step.resource) ? '📺' : '🔗'}
+                    </Text>
                   </View>
                 )}
                 <View style={styles.playOverlay}>
-                  <Text style={{ color: '#fff', fontSize: 12 }}>▶</Text>
+                  <Text style={{ color: '#fff', fontSize: 12 }}>
+                    {isYoutubeResource(step.resource) ? '▶' : '👁️'}
+                  </Text>
                 </View>
               </Pressable>
             )}
@@ -168,15 +212,12 @@ export default function StepItem({
                 const isYT = isYoutubeResource(res);
                 return (
                   <Pressable
-                    onPress={async () => {
-                      if (isYT) setShowPreview(true)
-                      else {
-                        try {
-                          const supported = await Linking.canOpenURL(res.url)
-                          if (supported) await Linking.openURL(res.url)
-                        } catch (e) { console.error(e) }
-                      }
-                    }}
+                    onPress={() => setPreviewData({
+                      visible: true,
+                      type: res.type,
+                      url: res.url,
+                      resourceId: res.id
+                    })}
                     style={[
                       styles.resourceAction,
                       { backgroundColor: isYT ? '#FF0000' : palette.black }
@@ -235,7 +276,7 @@ export default function StepItem({
               </Pressable>
 
               <Pressable
-                onPress={() => onUpdateStatus(step.id, 'completed')}
+                onPress={handleCompletePress}
                 style={styles.completeButton}
               >
                 <Text style={styles.completeButtonText}>COMPLETA</Text>
@@ -255,11 +296,47 @@ export default function StepItem({
       </View>
 
       <ResourcePreview
-        visible={showPreview}
-        onClose={() => setShowPreview(false)}
-        type="youtube"
-        url={step.resource?.url || ''}
+        visible={previewData.visible}
+        onClose={() => setPreviewData(prev => ({ ...prev, visible: false }))}
+        type={previewData.type}
+        url={previewData.url}
+        resourceId={previewData.resourceId}
       />
+
+      {/* RATING MODAL */}
+      <Modal
+        visible={showRatingPopup}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowRatingPopup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingCard}>
+            <Text style={styles.ratingTitle}>Com'era questa risorsa?</Text>
+            <Text style={styles.ratingSubtitle}>Dai un voto da 1 a 5 stelline</Text>
+
+            <View style={styles.starsContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable
+                  key={star}
+                  onPress={() => handleSubmitRating(star)}
+                  style={({ pressed }) => [
+                    styles.starButton,
+                    pressed && { transform: [{ scale: 1.2 }] }
+                  ]}
+                >
+                  <Text style={styles.starText}>⭐</Text>
+                  <Text style={styles.starNumber}>{star}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable onPress={() => { setShowRatingPopup(false); onUpdateStatus(step.id, 'completed'); }} style={{ marginTop: 20 }}>
+              <Text style={{ color: palette.gray, fontSize: 14 }}>Salta valutazione</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -454,4 +531,55 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  ratingCard: {
+    backgroundColor: palette.white,
+    padding: 30,
+    borderRadius: 24,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+    elevation: 5
+  },
+  ratingTitle: {
+    ...typography.title,
+    fontSize: 22,
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  ratingSubtitle: {
+    ...typography.body,
+    color: palette.gray,
+    marginBottom: 24,
+    textAlign: 'center'
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center'
+  },
+  starButton: {
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: palette.lightGray,
+    borderRadius: 12,
+    width: 44,
+    height: 60,
+    justifyContent: 'center'
+  },
+  starText: {
+    fontSize: 20,
+    marginBottom: 4
+  },
+  starNumber: {
+    ...typography.label,
+    fontSize: 12,
+    color: palette.black
+  }
 })
