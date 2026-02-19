@@ -24,10 +24,30 @@ const WEB_ANALYTICS_JS = `
     // 2. Track scroll
     let maxScroll = 0;
     window.addEventListener('scroll', function() {
-      const scrollMax = document.documentElement.scrollHeight - window.innerHeight;
-      if (scrollMax <= 0) return;
-      const currentScroll = window.scrollY;
-      const percentage = Math.min(100, (currentScroll / scrollMax) * 100);
+      const scrollHeight = Math.max(
+        document.body.scrollHeight, document.documentElement.scrollHeight,
+        document.body.offsetHeight, document.documentElement.offsetHeight,
+        document.body.clientHeight, document.documentElement.clientHeight
+      );
+      const scrollMax = scrollHeight - window.innerHeight;
+      
+      if (scrollMax <= 0) {
+        if (maxScroll < 100) {
+          maxScroll = 100;
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', percentage: 100 }));
+        }
+        return;
+      }
+
+      const currentScroll = window.scrollY || window.pageYOffset;
+      let percentage = (currentScroll / scrollMax) * 100;
+      
+      // Snap to 100% if we are within 20px from the bottom
+      if (currentScroll + window.innerHeight >= scrollHeight - 20) {
+        percentage = 100;
+      }
+
+      percentage = Math.min(100, Math.max(0, percentage));
       
       if (percentage > maxScroll) {
         maxScroll = percentage;
@@ -40,10 +60,11 @@ const WEB_ANALYTICS_JS = `
 
     // Handle pages that might be too short to scroll
     setTimeout(() => {
-        if (document.documentElement.scrollHeight <= window.innerHeight) {
+        const scrollHeight = document.documentElement.scrollHeight;
+        if (scrollHeight <= window.innerHeight + 10) {
              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', percentage: 100 }));
         }
-    }, 1000);
+    }, 1500);
   })();
 `;
 

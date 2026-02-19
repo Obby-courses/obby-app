@@ -3,6 +3,7 @@ export type LoadingStatus =
   | 'GENERATING_PHASES'
   | 'GENERATING_STEPS'
   | 'GENERATING_MILESTONE'
+  | 'GENERATING_ASSESSMENT'
   | 'SUCCESS_PHASE'
 
 type LoadingMessage = {
@@ -31,6 +32,11 @@ export const loadingMessages: Record<LoadingStatus, LoadingMessage> = {
     emoji: '🏆',
     title: 'Sfida Finale',
     subtitle: 'Stiamo preparando la tua prova di competenza',
+  },
+  GENERATING_ASSESSMENT: {
+    emoji: '🧠',
+    title: 'Analisi Competenze',
+    subtitle: 'Stiamo preparando alcune domande per te',
   },
   SUCCESS_PHASE: {
     emoji: '⭐',

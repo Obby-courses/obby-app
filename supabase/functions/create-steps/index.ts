@@ -158,12 +158,12 @@ async function getOrCreateResource(
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
+  console.log("[VERSION] 2026-02-19 - PRIOR KNOWLEDGE & SKIPPED STATUS SUPPORT v1.1.5")
 
   try {
     const body = await req.json()
     console.log("[BODY]", JSON.stringify(body))
-    const { 
+    let { 
       courseId, 
       phaseId, 
       phaseTitle,
@@ -171,7 +171,8 @@ serve(async (req: Request) => {
       courseTitle, 
       courseDescription,
       preview,
-      stepsToSave
+      stepsToSave,
+      priorKnowledge
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -282,6 +283,7 @@ serve(async (req: Request) => {
     let macroPhaseTitle = 'FONDAMENTI PRATICI'
     let macroPhaseOrderIndex = 1
 
+    let effectiveKeywords = phaseKeywords || []
     try {
       const { data: phaseRow } = await supabase
         .from('phases')
@@ -302,10 +304,8 @@ serve(async (req: Request) => {
         }
       }
       
-      if (phaseRow?.keywords && !phaseKeywords) {
-        // Fallback if keywords not in body
-        console.log("[PHASE 0] Using keywords from DB")
-        phaseKeywords = phaseRow.keywords
+      if (!effectiveKeywords.length && phaseRow?.keywords) {
+        effectiveKeywords = phaseRow.keywords
       }
     } catch (err) {
       console.warn('[PHASE 0] Could not fetch macro-phase context, using defaults:', err)
@@ -324,11 +324,12 @@ serve(async (req: Request) => {
             role: 'user',
             content: USER_PRE_PHASE_ANALYSIS_PROMPT({
               phaseTitle,
-              phaseKeywords: phaseKeywords || [],
+              phaseKeywords: effectiveKeywords,
               courseTitle: finalCourseTitle,
               macroPhaseTitle,
               macroPhaseOrderIndex,
-              completedSteps: (allStepsData || []).map((s: any) => ({ title: s.title, description: s.description || '' }))
+              completedSteps: (allStepsData || []).map((s: any) => ({ title: s.title, description: s.description || '' })),
+              priorKnowledge
             })
           }
         ],
@@ -368,10 +369,11 @@ serve(async (req: Request) => {
             role: 'user', 
             content: USER_THEME_DISCOVERY_PROMPT({
               phaseTitle,
-              phaseKeywords: phaseKeywords || [],
+              phaseKeywords: effectiveKeywords,
               courseTitle: finalCourseTitle,
               domain: detectDomain(finalCourseTitle),
-              prerequisiteGaps: prerequisiteGaps.length > 0 ? prerequisiteGaps : undefined
+              prerequisiteGaps: prerequisiteGaps.length > 0 ? prerequisiteGaps : undefined,
+              priorKnowledge
             })
           }
         ],
@@ -501,7 +503,7 @@ serve(async (req: Request) => {
             role: 'user', 
             content: USER_CURRICULUM_ASSEMBLY_PROMPT({
               phaseTitle,
-              phaseKeywords: phaseKeywords || [],
+              phaseKeywords: effectiveKeywords,
               themes: themes,
               candidateResources: qualityResources,
               existingSteps: phaseSteps

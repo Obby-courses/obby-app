@@ -22,8 +22,15 @@ import { colors, palette, radius, spacing, typography } from '../lib/theme'
 type Step = {
   id: string
   completed: boolean
+  status?: 'pending' | 'completed' | 'skipped'
   order_index: number
   created_at: string
+}
+
+type Milestone = {
+  id: string
+  completed: boolean
+  order_index: number
 }
 
 type Phase = {
@@ -31,6 +38,7 @@ type Phase = {
   title: string
   order_index: number
   steps: Step[]
+  milestones: Milestone[]
 }
 
 type Course = {
@@ -78,15 +86,24 @@ export default function Index() {
           id,
           title,
           order_index,
-          steps (
-            id,
-            completed,
-            order_index,
-            created_at
+            steps (
+              id,
+              completed,
+              status,
+              order_index,
+              created_at
+            ),
+            milestones (
+              id,
+              completed,
+              status,
+              order_index
+            )
           )
-        )
-      `)
+        `)
       .order('order_index', { foreignTable: 'phases' })
+      .order('order_index', { foreignTable: 'phases.steps' })
+      .order('order_index', { foreignTable: 'phases.milestones' })
 
     if (!error && data) {
       setCourses(data as Course[])
@@ -121,9 +138,17 @@ export default function Index() {
   const getActivePhase = useMemo(() => {
     return (phases: Phase[]) => {
       if (!phases?.length) return null
-      const active = phases.find((phase) =>
-        phase.steps.some((step) => !step.completed)
-      )
+      // La fase attiva è la prima che ha step incompleti O una milestone incompleta
+      const active = phases.find((phase) => {
+        const steps = Array.isArray(phase.steps) ? phase.steps : []
+        const milestones = Array.isArray(phase.milestones) ? phase.milestones : []
+
+        const hasPendingSteps = steps.some((s: any) => s.status === 'pending' || (!s.status && !s.completed))
+        const lastMilestone = milestones[milestones.length - 1]
+        const hasPendingMilestone = lastMilestone && !lastMilestone.completed
+
+        return hasPendingSteps || hasPendingMilestone
+      })
       return active || phases[phases.length - 1]
     }
   }, [])
@@ -133,11 +158,11 @@ export default function Index() {
 
     courses.forEach((course) => {
       const allSteps: Step[] = []
-      const sortedPhases = [...course.phases].sort(
+      const sortedPhases = Array.isArray(course.phases) ? [...course.phases].sort(
         (a, b) => a.order_index - b.order_index
-      )
+      ) : []
       sortedPhases.forEach((phase) => {
-        const sortedSteps = [...phase.steps].sort(
+        const sortedSteps = [...(phase.steps || [])].sort(
           (a, b) => a.order_index - b.order_index
         )
         allSteps.push(...sortedSteps)
@@ -185,7 +210,7 @@ export default function Index() {
     const activePhase = getActivePhase(item.phases)
     const steps = activePhase?.steps || []
     const totalSteps = steps.length
-    const completedSteps = steps.filter((s) => s.completed).length
+    const completedOrSkipped = steps.filter((s) => s.status === 'completed' || s.status === 'skipped' || (!s.status && s.completed)).length
     const courseColor = getCourseColor(item.id)
 
     return (
@@ -203,12 +228,34 @@ export default function Index() {
             )}
             <View style={styles.progressRow}>
               <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${(completedSteps / totalSteps) * 100}%` }]} />
+                <View style={[styles.progressBarFill, { width: `${totalSteps > 0 ? (completedOrSkipped / totalSteps) * 100 : 0}%` }]} />
               </View>
               <Text style={styles.progressValue}>
-                {completedSteps}/{totalSteps}
+                {completedOrSkipped}/{totalSteps}
               </Text>
             </View>
+
+            {/* Check Milestone Pending State */}
+            {(() => {
+              const ms = Array.isArray(activePhase?.milestones) ? activePhase.milestones : []
+              const lastMilestone = ms[ms.length - 1] // Consider only the LAST generated milestone
+
+              const allStepsDone = totalSteps > 0 && completedOrSkipped === totalSteps
+
+              if (allStepsDone && lastMilestone && !lastMilestone.completed) {
+                return (
+                  <View style={styles.milestoneActionRow}>
+                    <View style={styles.milestoneBadge}>
+                      <Text style={styles.milestoneBadgeText}>🏆 Milestone Pronta</Text>
+                    </View>
+                    <View style={styles.completePhaseBtn}>
+                      <Text style={styles.completePhaseBtnText}>Completa Fase</Text>
+                    </View>
+                  </View>
+                )
+              }
+              return null
+            })()}
           </View>
 
           <Pressable
@@ -443,6 +490,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     color: palette.black,
+  },
+  milestoneActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  milestoneBadge: {
+    flex: 1,
+  },
+  milestoneBadgeText: {
+    ...typography.label,
+    fontSize: 10,
+    color: palette.black,
+    fontWeight: '800',
+  },
+  completePhaseBtn: {
+    backgroundColor: palette.black,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  completePhaseBtnText: {
+    color: palette.white,
+    fontSize: 11,
+    fontWeight: '900',
   },
   deleteIconBtn: {
     marginTop: 6,

@@ -109,11 +109,16 @@ export const USER_PHASE_PROMPT = (
   courseTitle: string,
   macroTitle: string,
   macroKeywords: string[] | string,
-  orderIndex: number
+  orderIndex: number,
+  priorKnowledge?: Array<{ title: string, description: string }>
 ) => {
   const keywordsStr = Array.isArray(macroKeywords) 
     ? macroKeywords.join(", ") 
     : macroKeywords;
+
+  const priorMsg = priorKnowledge && priorKnowledge.length > 0
+    ? `\nPRIOR KNOWLEDGE (Already Mastered):\nThe learner has already completed these macro-phases and mastered their outcomes:\n${priorKnowledge.map((pk, i) => `${i+1}. ${pk.title}: ${pk.description}`).join('\n')}\n`
+    : '';
 
   return `
 CONTEXT (JSON):
@@ -125,7 +130,7 @@ CONTEXT (JSON):
     "difficulty_order_index": ${orderIndex}
   }
 }
-
+${priorMsg}
 TASK:
 Generate EXACTLY 4 phases for this macro-phase following the pedagogical pattern:
 1. Phase 1: SETUP & FIRST WIN (immediate tangible result)
@@ -137,6 +142,7 @@ CONSTRAINTS:
 - Use the "course_title" to ensure correct domain context.
 - The "macro_phase.keywords" list is your ABSOLUTE guide.
 - **IMPORTANT**: If the course is about "${courseTitle}", all phases MUST be strictly related to that topic.
+${priorKnowledge && priorKnowledge.length > 0 ? "- **SKIP BASICS**: Do NOT repeat topics or skills listed in 'PRIOR KNOWLEDGE'. The learner is already competent in those areas." : ""}
 - Convert keywords into CONCRETE GOALS and VERIFIABLE OUTCOMES.
 - Respect difficulty level (1 = beginner, 6 = expert): ${orderIndex}/6
 - Each phase must build naturally on the previous one with minimal gap.
@@ -662,14 +668,19 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
   courseTitle: string
   domain: string
   prerequisiteGaps?: Array<{ gap: string; type: string; severity: string; reason: string }>
+  priorKnowledge?: Array<{ title: string, description: string }>
 }) => {
   const prerequisiteSection = params.prerequisiteGaps && params.prerequisiteGaps.length > 0
     ? `\nPREREQUISITE ANALYSIS (from Level 1 - BINDING):\nThe following knowledge gaps were identified. You MUST generate themes to cover CRITICAL gaps FIRST.\n${params.prerequisiteGaps.map(g => `- [${g.severity.toUpperCase()}] [${g.type}] ${g.gap}: ${g.reason}`).join('\n')}\n`
     : ''
 
+  const priorSection = params.priorKnowledge && params.priorKnowledge.length > 0
+    ? `\nPRIOR KNOWLEDGE (Already Mastered):\nThe learner has already completed these macro-phases and mastered their outcomes:\n${params.priorKnowledge.map((pk, i) => `${i+1}. ${pk.title}: ${pk.description}`).join('\n')}\n`
+    : '';
+
   const keywordsStr = Array.isArray(params.phaseKeywords) ? params.phaseKeywords.join(", ") : params.phaseKeywords;
 
-  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nKeywords: "${keywordsStr}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.`;
+  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nKeywords: "${keywordsStr}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${priorSection}${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.${params.priorKnowledge?.length ? "\n**STRICT RULE**: Do NOT generate themes for skills already covered in 'PRIOR KNOWLEDGE'." : ""}`;
 }
 
 // -------------------------------------------------------
@@ -874,10 +885,17 @@ export const USER_PRE_PHASE_ANALYSIS_PROMPT = (params: {
   macroPhaseTitle: string
   macroPhaseOrderIndex: number
   completedSteps: Array<{ title: string; description: string }>
+  priorKnowledge?: Array<{ title: string, description: string }>
 }) => {
   const stepsContext = params.completedSteps.length > 0
     ? params.completedSteps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')
-    : '(No previous steps completed - this is the learner\'s starting point)'
+    : params.priorKnowledge && params.priorKnowledge.length > 0 
+      ? '(No steps in current macro-phase yet, but see PRIOR KNOWLEDGE below)'
+      : '(No previous steps completed - this is the learner\'s starting point)'
+
+  const priorMsg = params.priorKnowledge && params.priorKnowledge.length > 0
+    ? `\nPRIOR KNOWLEDGE (Assessment Result):\nThe learner skipped the early stages because they ALREADY MASTERED these macro-phases:\n${params.priorKnowledge.map((pk, i) => `${i+1}. ${pk.title}: ${pk.description}`).join('\n')}\n`
+    : '';
 
   const keywordsStr = Array.isArray(params.phaseKeywords) ? params.phaseKeywords.join(", ") : params.phaseKeywords;
 
@@ -888,14 +906,14 @@ Keywords: "${keywordsStr}"
 COURSE CONTEXT:
 Course Title: "${params.courseTitle}"
 Macro-Phase: "${params.macroPhaseTitle}" (order_index: ${params.macroPhaseOrderIndex}/6)
-
-LEARNER'S CURRENT KNOWLEDGE (steps already completed in the course):
+${priorMsg}
+LEARNER'S CURRENT KNOWLEDGE (from specific steps in this course):
 ${stepsContext}
 
 TASK:
-Analyze this phase and identify what prerequisites a learner needs BEFORE starting it.
-Consider the macro-phase level (1 = absolute beginner, 6 = expert) when calibrating severity.
-Return JSON following the schema above.`;
+Analyze the "PHASE TO ANALYZE" and identify prerequisites.
+${params.priorKnowledge?.length ? "**IMPORTANT**: Do NOT flag something as a 'prerequisite gap' if it is already covered in the 'PRIOR KNOWLEDGE' section. Assume the user is proficient in those topics." : ""}
+Return JSON.`;
 }
 
 // -------------------------------------------------------
@@ -969,4 +987,63 @@ TASK:
 Verify that every CRITICAL prerequisite gap is covered by a step that appears before any step that needs it.
 If violations are found, suggest specific insertions with search queries to find remedial content.
 Return JSON following the schema above.`;
+}
+
+// -------------------------------------------------------
+// QUIZ GENERATION (Extensible for multiple quiz types)
+// -------------------------------------------------------
+export const QUIZ_GENERATOR = `You are an expert educational assessment designer.
+
+Your task is to generate YES/NO skill assessment questions for a course. Each question tests whether the learner ALREADY HAS practical familiarity with the content of a specific macro-phase.
+
+CRITICAL RULES:
+1. Generate EXACTLY 1 question per macro-phase provided
+2. Questions must test PRACTICAL ABILITY, not theoretical knowledge:
+   ✅ GOOD: "Sai già accordare una chitarra e mantenere la postura corretta?"
+   ❌ BAD: "Sai cos'è l'accordatura?" (too theoretical)
+3. Each question should synthesize 2-3 keywords from the macro-phase into a single clear scenario
+4. Questions MUST be answerable with a simple "Yes, I can do this" or "No, I need to learn this"
+5. Progressive difficulty: question for macro-phase 1 should be basic, question for macro-phase 6 should be advanced
+6. Language: MATCH the language of the course title. If course is in Italian, questions in Italian. If English, questions in English.
+7. Questions should be concise (1-2 sentences max)
+
+OUTPUT FORMAT (JSON only, no additional text):
+{
+  "questions": [
+    {
+      "macro_phase_order": number,
+      "question": "string",
+      "keywords_tested": ["keyword1", "keyword2"]
+    }
+  ]
+}`;
+
+export const USER_QUIZ_PROMPT = (params: {
+  quizType: string
+  courseTitle: string
+  macroPhases: Array<{
+    id: string
+    title: string
+    keywords: string[]
+    order_index: number
+  }>
+}) => {
+  const phasesContext = params.macroPhases
+    .sort((a, b) => a.order_index - b.order_index)
+    .map(mp => `${mp.order_index}. "${mp.title}" — Keywords: ${mp.keywords.join(', ')}`)
+    .join('\n')
+
+  return `QUIZ TYPE: ${params.quizType}
+
+COURSE: "${params.courseTitle}"
+
+MACRO-PHASES (ordered by difficulty, 1 = beginner, 6 = expert):
+${phasesContext}
+
+TASK:
+Generate exactly 1 YES/NO question per macro-phase.
+Each question should test whether the learner can ALREADY DO the practical skills described by that macro-phase's keywords.
+The user will answer these questions to determine their starting level in the course.
+
+Return ONLY valid JSON.`;
 }

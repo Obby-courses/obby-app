@@ -2,8 +2,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-    MILESTONE_GENERATOR,
-    USER_MILESTONE_PROMPT
+  MILESTONE_GENERATOR,
+  USER_MILESTONE_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -13,12 +13,12 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
+  console.log("[VERSION] 2026-02-19 - PRIOR KNOWLEDGE & SKIPPED STATUS SUPPORT v1.1.5")
 
   try {
     const body = await req.json()
     console.log("[BODY]", JSON.stringify(body))
-    const { 
+    let { 
       courseId, 
       phaseId, 
       phaseTitle, 
@@ -50,9 +50,7 @@ serve(async (req: Request) => {
         .eq('id', phaseId)
         .single()
         
-    if (dbPhase?.keywords && !phaseKeywords) {
-        phaseKeywords = dbPhase.keywords
-    }
+    const effectiveKeywords = phaseKeywords || dbPhase?.keywords || []
 
     const { data: dbSteps, error: stepsWaitErr } = await supabase
         .from('steps')
@@ -77,7 +75,7 @@ serve(async (req: Request) => {
           { role: 'system', content: MILESTONE_GENERATOR },
           { role: 'user', content: USER_MILESTONE_PROMPT({
               phaseTitle,
-              phaseKeywords: phaseKeywords || [],
+              phaseKeywords: effectiveKeywords,
               steps: stepsToUse.map((s:any) => ({
                   title: s.title,
                   description: s.description || s.learning_objective || "" 

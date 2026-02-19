@@ -1,11 +1,12 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
+import SkillAssessment, { AssessmentQuestion } from '@/components/SkillAssessment'
 import { LoadingStatus } from '@/lib/loadingMessages'
 import { supabase } from '@/lib/supabase'
 import { palette, radius, spacing, typography } from '@/lib/theme'
 import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
-import { useState } from 'react'
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { useRef, useState } from 'react'
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -31,6 +32,11 @@ export default function NewCourseAIScreen() {
   const [error, setError] = useState<string | null>(null)
   const [stepsPerWeek, setStepsPerWeek] = useState(3)
   const [searchMode, setSearchMode] = useState<SearchMode>('mixed')
+
+  // Skill Assessment state
+  const [assessmentQuestions, setAssessmentQuestions] = useState<AssessmentQuestion[]>([])
+  const [showAssessment, setShowAssessment] = useState(false)
+  const assessmentResolveRef = useRef<((startIndex: number) => void) | null>(null)
 
   async function handleGenerateComplete() {
     if (!courseInput.trim()) return
@@ -81,15 +87,65 @@ export default function NewCourseAIScreen() {
 
       if (courseError || !courseData) throw new Error('Errore caricamento dettagli corso')
 
-      // Recupero le macro-fasi per trovare la prima
+      // Recupero le macro-fasi con keywords
       const { data: mPhases } = await supabase
         .from('macro_phases')
-        .select('id, title, description, order_index')
+        .select('id, title, description, order_index, keywords')
         .eq('course_id', courseId)
         .order('order_index')
 
       if (!mPhases?.length) throw new Error('Nessuna macro-fase trovata')
-      const targetMacro = mPhases[0]
+
+      /* =======================================================
+          STEP 1.5 — SKILL ASSESSMENT (Binary Search Quiz)
+         ======================================================= */
+      setLoadingStatus('GENERATING_ASSESSMENT')
+
+      let startIndex = 0
+      try {
+        const quizRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-quiz`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            quizType: 'skill_assessment',
+            courseId,
+            courseTitle: courseData.title,
+            macroPhases: mPhases.map(mp => ({
+              id: mp.id,
+              title: mp.title,
+              keywords: mp.keywords || [],
+              order_index: mp.order_index,
+            })),
+          }),
+        })
+
+        const quizData = await quizRes.json()
+        console.log('🧠 Quiz data:', JSON.stringify(quizData))
+
+        if (quizData.success && quizData.questions?.length > 0) {
+          // Show assessment modal and wait for user response
+          setAssessmentQuestions(quizData.questions)
+          setShowAssessment(true)
+
+          // Pause the generation flow until user completes the quiz
+          startIndex = await new Promise<number>((resolve) => {
+            assessmentResolveRef.current = resolve
+          })
+
+          setShowAssessment(false)
+          console.log('✅ Assessment complete. Starting from macro-phase index:', startIndex)
+        } else {
+          console.warn('⚠️ Quiz generation failed, starting from beginning')
+        }
+      } catch (quizErr: any) {
+        console.warn('⚠️ Assessment error (non-blocking):', quizErr.message)
+        // Non-blocking: if quiz fails, just start from the beginning
+      }
+
+      const targetMacro = mPhases[startIndex]
 
       /* =======================================================
           STEP 2 — PHASES GENERATION
@@ -109,6 +165,11 @@ export default function NewCourseAIScreen() {
           macroPhaseTitle: targetMacro.title,
           macroPhaseDescription: targetMacro.description,
           orderIndex: targetMacro.order_index,
+          priorKnowledge: mPhases.slice(0, startIndex).map(mp => ({
+            title: mp.title,
+            description: mp.description,
+            keywords: mp.keywords
+          }))
         }),
       })
 
@@ -147,6 +208,11 @@ export default function NewCourseAIScreen() {
           courseTitle: courseData.title,
           courseDescription: courseData.description,
           searchMode, // Passa la modalità scelta
+          priorKnowledge: mPhases.slice(0, startIndex).map(mp => ({
+            title: mp.title,
+            description: mp.description,
+            keywords: mp.keywords
+          }))
         }),
       })
 
@@ -358,7 +424,24 @@ export default function NewCourseAIScreen() {
       </ScrollView>
 
       {/* Overlay di caricamento con messaggi dinamici */}
-      <LoadingOverlay visible={isProcessing} status={loadingStatus} />
+      <LoadingOverlay visible={isProcessing && !showAssessment} status={loadingStatus} />
+
+      {/* Skill Assessment Modal */}
+      <Modal
+        visible={showAssessment}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <SkillAssessment
+          questions={assessmentQuestions}
+          onComplete={(startIndex) => {
+            if (assessmentResolveRef.current) {
+              assessmentResolveRef.current(startIndex)
+              assessmentResolveRef.current = null
+            }
+          }}
+        />
+      </Modal>
     </View>
   )
 }

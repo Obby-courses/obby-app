@@ -10,7 +10,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  console.log("[VERSION] 2026-02-15 - MILESTONE & PREREQUISITE SYNERGY v1.1.3")
+  console.log("[VERSION] 2026-02-19 - PRIOR KNOWLEDGE & SKIPPED STATUS SUPPORT v1.1.5")
 
   try {
     const { 
@@ -19,7 +19,8 @@ serve(async (req: Request) => {
       macroPhaseId, 
       macroPhaseTitle, 
       macroPhaseKeywords, // Extract keywords
-      orderIndex
+      orderIndex,
+      priorKnowledge
     } = await req.json();
 
     console.log(`🚀 STEP 2: Generazione fasi per "${macroPhaseTitle}" (Corso: ${courseTitle})`);
@@ -50,7 +51,8 @@ serve(async (req: Request) => {
               courseTitle || "Corso senza titolo",
               macroPhaseTitle, 
               macroPhaseKeywords || [], // Pass keywords
-              orderIndex || 1 
+              orderIndex || 1,
+              priorKnowledge
             )
           }
         ]
