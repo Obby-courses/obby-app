@@ -150,11 +150,18 @@ serve(async (req) => {
     }
 
     // Return video data WITHOUT saving to DB
+    const vId = video.id.videoId
+    
+    // Construct high-res thumbnail URLs manually
+    // maxresdefault (1280x720) is crispest, sddefault (640x480) is a good fallback
+    const hqThumbnail = `https://i.ytimg.com/vi/${vId}/maxresdefault.jpg`
+    const sdThumbnail = `https://i.ytimg.com/vi/${vId}/sddefault.jpg`
+    
     const videoData = {
       title: video.snippet.title,
       description: video.snippet.description,
-      url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
-      thumbnail_url: video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.default?.url,
+      url: `https://www.youtube.com/watch?v=${vId}`,
+      thumbnail_url: hqThumbnail || sdThumbnail || video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.default?.url,
       ai_selection_reason: AI_REASON
     }
 

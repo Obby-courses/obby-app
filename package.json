@@ -1,7 +1,7 @@
 {
   "name": "obby-app",
   "main": "expo-router/entry",
-  "version": "1.4.4",
+  "version": "1.1.6",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -47,10 +47,10 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.15.0",
-    "react-native-worklets": "0.5.1",
     "react-native-youtube-iframe": "^2.4.1"
   },
   "devDependencies": {
+    "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",

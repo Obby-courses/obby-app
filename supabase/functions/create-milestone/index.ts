@@ -2,8 +2,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  MILESTONE_GENERATOR,
-  USER_MILESTONE_PROMPT
+    MILESTONE_GENERATOR,
+    USER_MILESTONE_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -208,6 +208,35 @@ serve(async (req: Request) => {
   }
 })
 
+async function fetchWebThumbnail(url: string): Promise<string | null> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3500)
+    
+    const response = await fetch(url, { signal: controller.signal })
+    const html = await response.text()
+    clearTimeout(timeout)
+
+    const ogMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) || 
+                    html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:image["']/i)
+    if (ogMatch?.[1]) return ogMatch[1].startsWith('//') ? `https:${ogMatch[1]}` : ogMatch[1]
+
+    const twitterMatch = html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i)
+    if (twitterMatch?.[1]) return twitterMatch[1]
+
+    const imgMatches = html.matchAll(/<img\s+[^>]*src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)(?:[^"']*)?)["']/gi)
+    for (const match of imgMatches) {
+        const src = match[1]
+        if (!src.toLowerCase().includes('favicon') && !src.toLowerCase().includes('logo') && !src.toLowerCase().includes('icon')) {
+            return src
+        }
+    }
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
 async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: string }> {
   const cleanUrl = resource.url.trim()
   
@@ -221,6 +250,12 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
   if (existing && existing.length > 0) {
     return { id: existing[0].id }
   }
+
+  let finalThumbnail = resource.thumbnail_url
+  if (!finalThumbnail && resource.type === 'webpage') {
+    const extracted = await fetchWebThumbnail(cleanUrl)
+    if (extracted) finalThumbnail = extracted
+  }
   
   // Create new resource
   const { data: newResource, error: createError } = await supabase
@@ -228,7 +263,7 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     .insert({
       title: resource.title,
       url: cleanUrl,
-      thumbnail_url: resource.thumbnail_url,
+      thumbnail_url: finalThumbnail,
       summary: resource.description,
       type: resource.type
     })

@@ -1,4 +1,5 @@
 import { colors, palette, radius, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import React from 'react'
 import {
     Pressable,
@@ -52,9 +53,11 @@ export default function MilestoneNode({
                             borderColor: isLocked ? colors.border : colors.primary
                         }
                     ]}>
-                        <Text style={{ fontSize: 32 }}>
-                            {isLocked ? '🔒' : '🏆'}
-                        </Text>
+                        <Ionicons
+                            name={isLocked ? 'lock-closed' : 'trophy'}
+                            size={32}
+                            color={isLocked ? colors.mutedText : palette.white}
+                        />
                     </View>
 
                     <View style={{ flex: 1 }}>
@@ -66,7 +69,7 @@ export default function MilestoneNode({
 
                     {!isLocked && (
                         <View style={[styles.arrowContainer, { borderColor: activeColor }]}>
-                            <Text style={{ fontSize: 20, color: activeColor }}>→</Text>
+                            <Ionicons name="arrow-forward" size={20} color={activeColor} />
                         </View>
                     )}
                 </View>

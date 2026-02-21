@@ -3,6 +3,7 @@ import { palette } from './palette'
 import { typography } from './typography'
 
 // Re-export specific modules for direct access if needed
+export { componentStyles, icons } from './icons'
 export { layout, radius, spacing } from './layout'
 export { palette } from './palette'
 export { typography } from './typography'

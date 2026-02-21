@@ -1,9 +1,12 @@
 import WeeklyCalendar from '@/components/WeeklyCalendar'
 import { getCourseColor } from '@/constants/courseColors'
+import { useFadeIn } from '@/hooks/useFadeIn'
+import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Modal,
   Pressable,
@@ -64,6 +67,7 @@ export default function Index() {
 
   const { user, profile, loading: authLoading } = useAuth()
   const router = useRouter()
+  const fadeAnim = useFadeIn()
 
   // Carica i corsi ogni volta che la schermata torna in primo piano
   useFocusEffect(
@@ -246,7 +250,9 @@ export default function Index() {
                 return (
                   <View style={styles.milestoneActionRow}>
                     <View style={styles.milestoneBadge}>
-                      <Text style={styles.milestoneBadgeText}>🏆 Milestone Pronta</Text>
+                      <Text style={styles.milestoneBadgeText}>
+                        <Ionicons name="trophy" size={14} color="#F59E0B" /> Milestone Pronta
+                      </Text>
                     </View>
                     <View style={styles.completePhaseBtn}>
                       <Text style={styles.completePhaseBtnText}>Completa Fase</Text>
@@ -266,7 +272,7 @@ export default function Index() {
             hitSlop={15}
             style={styles.deleteIconBtn}
           >
-            <Text style={{ fontSize: 18, opacity: 0.4, fontWeight: '900' }}>✕</Text>
+            <Ionicons name="close" size={18} color={palette.black} style={{ opacity: 0.4 }} />
           </Pressable>
         </View>
       </Pressable>
@@ -285,7 +291,7 @@ export default function Index() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <Animated.View style={[styles.container, { paddingTop: insets.top, opacity: fadeAnim }]}>
       <FlatList
         data={courses}
         keyExtractor={(item) => item.id}
@@ -305,7 +311,7 @@ export default function Index() {
                     onPress={() => router.push('/new-course')}
                     style={styles.addButton}
                   >
-                    <Text style={styles.addButtonText}>+</Text>
+                    <Ionicons name="add" size={28} color={colors.primary} />
                   </Pressable>
                 </View>
               </View>
@@ -392,7 +398,7 @@ export default function Index() {
           </View>
         </View>
       </Modal>
-    </View >
+    </Animated.View>
   )
 }
 

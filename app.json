@@ -2,23 +2,59 @@
   "expo": {
     "name": "Obby",
     "slug": "obby",
-    "version": "1.1.1",
+    "version": "1.1.6",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "expo-router",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "76385f66-625f-4bec-b35b-53fae0b629e7"
+      },
+      "router": {
+        "origin": false
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/76385f66-625f-4bec-b35b-53fae0b629e7"
+      "url": "https://u.expo.dev/76385f66-625f-4bec-b35b-53fae0b629e7",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD"
     },
     "orientation": "default",
-    "android": {},
-    "ios": {}
+    "android": {
+      "package": "com.obby.app",
+      "versionCode": 15,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": []
+    },
+    "ios": {
+      "bundleIdentifier": "com.obby.app",
+      "buildNumber": "1.1.6",
+      "supportsTablet": true
+    }
   }
 }

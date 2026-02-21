@@ -1,5 +1,6 @@
 import { LoadingStatus, loadingMessages } from '@/lib/loadingMessages'
-import { palette, spacing, typography } from '@/lib/theme'
+import { colors, palette, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import React from 'react'
 import { Text, View } from 'react-native'
 
@@ -28,9 +29,7 @@ export default function LoadingOverlay({ visible, status }: Props) {
         zIndex: 999,
       }}
     >
-      <Text style={{ fontSize: 64, marginBottom: spacing.lg }}>
-        {message.emoji}
-      </Text>
+      <Ionicons name={message.icon} size={84} color={colors.primary} style={{ marginBottom: spacing.lg }} />
 
       <Text style={{ ...typography.title, textAlign: 'center' }}>
         {message.title}

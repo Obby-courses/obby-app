@@ -1,6 +1,7 @@
 import { getCourseColor } from '@/constants/courseColors'
 import { supabase } from '@/lib/supabase'
 import { colors, radius, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -30,6 +31,8 @@ type Resource = {
     url: string
     type: string
     thumbnail_url?: string | null
+    avg_rating?: number
+    summary?: string | null
 }
 
 type Step = {
@@ -38,6 +41,7 @@ type Step = {
     description: string | null
     completed: boolean
     status?: 'pending' | 'completed' | 'skipped'
+    skip_reason?: string | null
     order_index: number
     phase_id: string
     course_id?: string
@@ -72,9 +76,10 @@ function isPhaseCompleted(phaseId: string, steps: Step[]) {
 
 type CourseViewerProps = {
     courseId: string;
+    hideHeader?: boolean;
 }
 
-export default function CourseViewer({ courseId }: CourseViewerProps) {
+export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps) {
     const router = useRouter()
     const insets = useSafeAreaInsets()
 
@@ -101,15 +106,8 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
 
     useEffect(() => {
         if (!courseId) return
-        loadCourse()
-        loadPhases()
+        loadAllData()
     }, [courseId])
-
-    useEffect(() => {
-        if (phases.length && macroPhases.length) {
-            loadStepsAndMilestones()
-        }
-    }, [phases, macroPhases])
 
     useEffect(() => {
         if (mapItems.length > 0 && !initialized.current) {
@@ -140,126 +138,129 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
         }
     }, [mapItems])
 
-    async function loadCourse() {
-        const { data } = await supabase
-            .from('courses')
-            .select('title, days_per_step, created_at')
-            .eq('id', courseId)
-            .single()
+    async function loadAllData() {
+        try {
+            // Parallelize initial core data fetching
+            const [courseRes, macroPhasesRes, phasesRes, stepsRes] = await Promise.all([
+                supabase
+                    .from('courses')
+                    .select('title, days_per_step, created_at')
+                    .eq('id', courseId)
+                    .single(),
+                supabase
+                    .from('macro_phases')
+                    .select('id, order_index')
+                    .eq('course_id', courseId)
+                    .order('order_index'),
+                supabase
+                    .from('phases')
+                    .select('id, title, order_index, macro_phase_id')
+                    .eq('course_id', courseId),
+                supabase
+                    .from('steps')
+                    .select(`
+                        id,
+                        title,
+                        description,
+                        completed,
+                        status,
+                        order_index,
+                        created_at,
+                        phase_id,
+                        course_id,
+                        resource_id,
+                        skip_reason,
+                        resource:resources!resource_id (
+                            id,
+                            title,
+                            url,
+                            type,
+                            thumbnail_url,
+                            avg_rating,
+                            summary
+                        )
+                    `)
+                    .eq('course_id', courseId)
+            ])
 
-        if (data) {
-            setCourseTitle(data.title)
-            if (data.days_per_step) setDaysPerStep(data.days_per_step)
-            if (data.created_at) setCourseCreatedAt(data.created_at)
+            if (courseRes.data) {
+                setCourseTitle(courseRes.data.title)
+                if (courseRes.data.days_per_step) setDaysPerStep(courseRes.data.days_per_step)
+                if (courseRes.data.created_at) setCourseCreatedAt(courseRes.data.created_at)
+            }
+
+            const macroPhasesData = macroPhasesRes.data || []
+            setMacroPhases(macroPhasesData)
+
+            const phasesData = phasesRes.data || []
+            setPhases(phasesData)
+
+            const stepsRawData = stepsRes.data || []
+
+            // Now that we have phases, fetch milestones in parallel if phases exist
+            let milestonesData: any[] = []
+            if (phasesData.length > 0) {
+                const { data } = await supabase
+                    .from('milestones')
+                    .select('*')
+                    .in('phase_id', phasesData.map(p => p.id))
+                milestonesData = data || []
+            }
+            setMilestones(milestonesData)
+
+            // Normalize and Sort Steps
+            const normalizedSteps: Step[] = stepsRawData.map((step: any) => ({
+                ...step,
+                status: step.status || 'pending',
+                completed: step.status ? (step.status === 'completed' || step.status === 'skipped') : step.completed,
+                resource: step.resource || null,
+                global_index: 0,
+            }))
+
+            const sortedSteps = normalizedSteps.sort((a, b) => {
+                const phaseA = phasesData.find(p => p.id === a.phase_id)
+                const phaseB = phasesData.find(p => p.id === b.phase_id)
+                if (!phaseA || !phaseB) return 0
+
+                const macroA = macroPhasesData.find(m => m.id === phaseA.macro_phase_id)
+                const macroB = macroPhasesData.find(m => m.id === phaseB.macro_phase_id)
+
+                if (macroA && macroB && macroA.order_index !== macroB.order_index) {
+                    return macroA.order_index - macroB.order_index
+                }
+
+                if (phaseA.order_index !== phaseB.order_index) return phaseA.order_index - phaseB.order_index
+                return a.order_index - b.order_index
+            }).map((step, idx) => ({ ...step, global_index: idx + 1 }))
+
+            setSteps(sortedSteps)
+            recomputeMapContent(sortedSteps, milestonesData, phasesData, macroPhasesData)
+        } catch (error) {
+            console.error("Error loading course data:", error)
         }
-
-        // Fetch macro phases as well for ordering
-        const { data: mData } = await supabase
-            .from('macro_phases')
-            .select('id, order_index')
-            .eq('course_id', courseId)
-            .order('order_index')
-
-        if (mData) setMacroPhases(mData)
-    }
-
-    async function loadPhases() {
-        const { data } = await supabase
-            .from('phases')
-            .select('id, title, order_index, macro_phase_id')
-            .eq('course_id', courseId)
-
-        if (!data) return
-
-        // Sorting will be handled in memory using macroPhases
-        setPhases(data)
     }
 
     async function loadStepsAndMilestones() {
-        // 1. Load Steps
-        const { data: stepsData, error: sErr } = await supabase
-            .from('steps')
-            .select(`
-        id,
-        title,
-        description,
-        completed,
-        status,
-        order_index,
-        created_at,
-        phase_id,
-        course_id,
-        resource_id,
-        resource:resources!resource_id (
-          id,
-          title,
-          url,
-          type,
-          thumbnail_url
-        )
-      `)
-            .eq('course_id', courseId)
-
-        if (sErr || !stepsData) {
-            console.error('loadSteps error', sErr)
-            return
-        }
-
-        // 2. Load Milestones
-        const { data: mData } = await supabase
-            .from('milestones')
-            .select('*')
-            .in('phase_id', phases.map(p => p.id))
-
-        const normalizedMilestones = mData || []
-        setMilestones(normalizedMilestones)
-
-        // 3. Normalize Steps
-        const normalizedSteps: Step[] = stepsData.map((step: any) => ({
-            ...step,
-            status: step.status || 'pending',
-            completed: step.status ? (step.status === 'completed' || step.status === 'skipped') : step.completed,
-            resource: step.resource || null,
-            global_index: 0,
-        }))
-
-        // Sort steps globally by Macro Order then Phase Order then Step Order
-        const sortedSteps = normalizedSteps.sort((a, b) => {
-            const phaseA = phases.find(p => p.id === a.phase_id)
-            const phaseB = phases.find(p => p.id === b.phase_id)
-            if (!phaseA || !phaseB) return 0
-
-            const macroA = macroPhases.find(m => m.id === phaseA.macro_phase_id)
-            const macroB = macroPhases.find(m => m.id === phaseB.macro_phase_id)
-
-            if (macroA && macroB && macroA.order_index !== macroB.order_index) {
-                return macroA.order_index - macroB.order_index
-            }
-
-            if (phaseA.order_index !== phaseB.order_index) return phaseA.order_index - phaseB.order_index
-            return a.order_index - b.order_index
-        }).map((step, idx) => ({ ...step, global_index: idx + 1 }))
-
-        setSteps(sortedSteps)
-        recomputeMapContent(sortedSteps, normalizedMilestones)
+        // Kept for refresh logic, but now redirects to loadAllData or minimal update
+        await loadAllData()
     }
 
-    function recomputeMapContent(allSteps: Step[], allMilestones: Milestone[]) {
+    function recomputeMapContent(allSteps: Step[], allMilestones: Milestone[], currentPhases: Phase[], currentMacroPhases: any[]) {
         const content: any[] = []
 
-        const firstIncompletePhase = getActivePhase(phases, allSteps)
+        const firstIncompletePhase = getActivePhase(currentPhases, allSteps)
 
-        const currentMacroPhaseId = firstIncompletePhase?.macro_phase_id || phases[phases.length - 1]?.macro_phase_id
-        const currentMacroOrder = macroPhases.find(m => m.id === currentMacroPhaseId)?.order_index || 0
+        const currentMacroPhaseId = firstIncompletePhase?.macro_phase_id || currentPhases[currentPhases.length - 1]?.macro_phase_id
+        const currentMacroOrder = currentMacroPhases.find(m => m.id === currentMacroPhaseId)?.order_index || 0
 
-        const visiblePhases = [...phases].sort((a, b) => {
-            const m1 = macroPhases.find(m => m.id === a.macro_phase_id)
-            const m2 = macroPhases.find(m => m.id === b.macro_phase_id)
+        const visiblePhases = [...currentPhases].sort((a, b) => {
+            const m1 = currentMacroPhases.find(m => m.id === a.macro_phase_id)
+            const m2 = currentMacroPhases.find(m => m.id === b.macro_phase_id)
             if (m1 && m2 && m1.order_index !== m2.order_index) return m1.order_index - m2.order_index
             return a.order_index - b.order_index
         }).filter(p => {
-            const m = macroPhases.find(m => m.id === p.macro_phase_id)
-            return m && m.order_index <= currentMacroOrder
+            const phaseMacro = currentMacroPhases.find(m => m.id === p.macro_phase_id)
+            return phaseMacro && phaseMacro.order_index <= currentMacroOrder
         })
 
         visiblePhases.forEach(p => {
@@ -324,8 +325,17 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
 
         // 1. Optimistic Local Update
         setSteps((prev) => {
-            const updated = prev.map((s) => s.id === stepId ? { ...s, status: newStatus, completed: isCompletedBool } : s)
-            recomputeMapContent(updated, milestones)
+            const updated = prev.map((s) =>
+                s.id === stepId
+                    ? {
+                        ...s,
+                        status: newStatus,
+                        completed: isCompletedBool,
+                        ...(newStatus !== 'skipped' && { skip_reason: null })
+                    }
+                    : s
+            )
+            recomputeMapContent(updated, milestones, phases, macroPhases)
             return updated
         })
 
@@ -342,7 +352,8 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
                 .from('steps')
                 .update({
                     status: databaseStatus,
-                    completed: isCompletedBool
+                    completed: isCompletedBool,
+                    ...(newStatus !== 'skipped' && { skip_reason: null })
                 })
                 .eq('id', stepId)
 
@@ -372,6 +383,9 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
         const offsetMap = [0, -45, 0, 45]
         const alignment = item.isMilestone ? 0 : offsetMap[index % 4]
 
+        const firstIncompleteStep = steps.find(s => !s.completed)
+        const activePhaseId = firstIncompleteStep?.phase_id
+
         if (item.isMilestone) {
             // Milestone is strictly locked if phase not done
             const isPhaseDone = isPhaseCompleted(item.phase_id, steps)
@@ -397,21 +411,23 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
         const isPlaceholder = !!item.isPlaceholder
         const step = item as Step
 
-        // Determine Locked Status
+        // Determine Locked Status: 
+        // A step is UNLOCKED if it is completed, OR it belongs to the active phase, 
+        // OR it's from a previous phase (which should be completed anyway).
         let isLocked = true
-        if (index === 0) {
+        if (step.completed) {
             isLocked = false
-        } else {
-            const prevItem = mapItems[index - 1]
-            if (prevItem.isMilestone) {
-                isLocked = false
-            } else {
-                isLocked = !prevItem.completed && !prevItem.isPlaceholder
-            }
+        } else if (!isPlaceholder && activePhaseId && step.phase_id === activePhaseId) {
+            isLocked = false
+        } else if (!isPlaceholder && !activePhaseId && steps.length > 0) {
+            // All steps completed - nothing is locked
+            isLocked = false
+        } else if (!isPlaceholder && index === 0) {
+            // Fallback for first ever step
+            isLocked = false
         }
 
-        if (step.completed) isLocked = false
-        const isCurrent = !isLocked && !step.completed && !isPlaceholder
+        const isCurrent = !isPlaceholder && step.id === firstIncompleteStep?.id
 
         let remainingProgress = 1
         if (isCurrent) {
@@ -421,6 +437,7 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
             const now = Date.now()
             remainingProgress = Math.max(0, Math.min(1, (deadlineMs - now) / totalDurationMs))
         }
+
         return (
             <View style={{ alignItems: 'center', transform: [{ translateX: alignment }] }}>
                 <StepNode
@@ -447,30 +464,32 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
                 </View>
             )}
 
-            <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Pressable
-                        onPress={() => router.replace('/')}
-                        style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: radius.md,
-                            borderWidth: 2,
-                            borderColor: colors.primary,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            backgroundColor: colors.background
-                        }}
-                    >
-                        <Text style={{ fontSize: 20, fontWeight: '800' }}>←</Text>
-                    </Pressable>
-                    <View style={{ flex: 1, marginHorizontal: 15 }}>
-                        <Text style={{ ...typography.label, color: colors.mutedText }}>Il tuo percorso</Text>
-                        <Text style={{ ...typography.header, color: colors.textPrimary }} numberOfLines={1}>{courseTitle}</Text>
+            {!hideHeader && (
+                <View style={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, zIndex: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Pressable
+                            onPress={() => router.replace('/')}
+                            style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: radius.md,
+                                borderWidth: 2,
+                                borderColor: colors.primary,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                backgroundColor: colors.background
+                            }}
+                        >
+                            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+                        </Pressable>
+                        <View style={{ flex: 1, marginHorizontal: 15 }}>
+                            <Text style={{ ...typography.label, color: colors.mutedText }}>Il tuo percorso</Text>
+                            <Text style={{ ...typography.header, color: colors.textPrimary }} numberOfLines={1}>{courseTitle}</Text>
+                        </View>
+                        <View style={{ width: 44 }} />
                     </View>
-                    <View style={{ width: 44 }} />
                 </View>
-            </View>
+            )}
 
             <FlatList
                 ref={flatListRef}
@@ -501,39 +520,32 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
                 onRequestClose={() => setSelectedStep(null)}
             >
                 <View style={{ flex: 1, backgroundColor: colors.background }}>
-                    <View style={{ flex: 1, marginTop: spacing.md }}>
-                        <View style={{ padding: spacing.lg, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
-                            <Pressable onPress={() => { setSelectedStep(null); setSelectedMilestone(null); }} style={{ width: 40, height: 40, backgroundColor: colors.card, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.border }}>
-                                <Text style={{ fontSize: 16, color: colors.textPrimary, fontWeight: '900' }}>✕</Text>
-                            </Pressable>
-                        </View>
+                    {selectedStep && (() => {
+                        const currentIdx = steps.findIndex(s => s.id === selectedStep.id)
+                        const hasPrev = currentIdx > 0
+                        const hasNext = currentIdx < steps.length - 1
 
-                        {selectedStep && (() => {
-                            const currentIdx = steps.findIndex(s => s.id === selectedStep.id)
-                            const hasPrev = currentIdx > 0
-                            const hasNext = currentIdx < steps.length - 1
-
-                            return (
-                                <StepItem
-                                    step={selectedStep}
-                                    onUpdateStatus={async (id, status) => {
-                                        await updateStepStatus(id, status)
-                                        if (status === 'completed' || status === 'skipped') {
-                                            setSelectedStep(null)
-                                        }
-                                    }}
-                                    index={currentIdx}
-                                    daysPerStep={daysPerStep}
-                                    courseCreatedAt={courseCreatedAt}
-                                    firstIncompleteIndex={steps.findIndex(s => !s.completed)}
-                                    referenceDate={referenceDate}
-                                    courseColor={courseColor}
-                                    onPrev={hasPrev ? () => setSelectedStep(steps[currentIdx - 1]) : undefined}
-                                    onNext={hasNext ? () => setSelectedStep(steps[currentIdx + 1]) : undefined}
-                                />
-                            )
-                        })()}
-                    </View>
+                        return (
+                            <StepItem
+                                step={selectedStep}
+                                onUpdateStatus={async (id, status) => {
+                                    await updateStepStatus(id, status)
+                                    if (status === 'completed' || status === 'skipped') {
+                                        setSelectedStep(null)
+                                    }
+                                }}
+                                onClose={() => setSelectedStep(null)}
+                                index={currentIdx}
+                                daysPerStep={daysPerStep}
+                                courseCreatedAt={courseCreatedAt}
+                                firstIncompleteIndex={steps.findIndex(s => !s.completed)}
+                                referenceDate={referenceDate}
+                                courseColor={courseColor}
+                                onPrev={hasPrev ? () => setSelectedStep(steps[currentIdx - 1]) : undefined}
+                                onNext={hasNext ? () => setSelectedStep(steps[currentIdx + 1]) : undefined}
+                            />
+                        )
+                    })()}
                 </View>
             </Modal>
 
@@ -548,7 +560,7 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
                     <View style={{ flex: 1, marginTop: spacing.md }}>
                         <View style={{ padding: spacing.md, flexDirection: 'row', justifyContent: 'flex-end', zIndex: 10 }}>
                             <Pressable onPress={() => setSelectedMilestone(null)} style={{ width: 40, height: 40, backgroundColor: colors.card, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.border }}>
-                                <Text style={{ fontSize: 16, color: colors.textPrimary, fontWeight: '900' }}>✕</Text>
+                                <Ionicons name="close" size={20} color={colors.textPrimary} />
                             </Pressable>
                         </View>
 
@@ -579,6 +591,7 @@ export default function CourseViewer({ courseId }: CourseViewerProps) {
                                         loadStepsAndMilestones()
                                         if (shouldClose) setSelectedMilestone(null)
                                     }}
+                                    onClose={() => setSelectedMilestone(null)}
                                     courseColor={courseColor}
                                 />
                             )

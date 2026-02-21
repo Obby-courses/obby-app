@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { Ionicons } from '@expo/vector-icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Dimensions, Modal, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
@@ -14,57 +15,73 @@ type ResourcePreviewProps = {
 
 const WEB_ANALYTICS_JS = `
   (function() {
-    // 1. Measure content length
-    const charCount = document.body.innerText.length;
-    window.ReactNativeWebView.postMessage(JSON.stringify({
-      type: 'metadata', 
-      charCount: charCount 
-    }));
-
-    // 2. Track scroll
     let maxScroll = 0;
-    window.addEventListener('scroll', function() {
-      const scrollHeight = Math.max(
-        document.body.scrollHeight, document.documentElement.scrollHeight,
-        document.body.offsetHeight, document.documentElement.offsetHeight,
-        document.body.clientHeight, document.documentElement.clientHeight
-      );
-      const scrollMax = scrollHeight - window.innerHeight;
-      
-      if (scrollMax <= 0) {
-        if (maxScroll < 100) {
-          maxScroll = 100;
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', percentage: 100 }));
-        }
-        return;
-      }
+    let pageHeight = document.documentElement.scrollHeight;
+    
+    const sendUpdate = (percentage) => {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'scroll', 
+        percentage: Math.min(100, Math.max(0, percentage))
+      }));
+    };
 
+    const calculateScroll = () => {
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+      const scrollMax = scrollHeight - clientHeight;
       const currentScroll = window.scrollY || window.pageYOffset;
+      
+      if (scrollMax <= 0) return 100;
+      
       let percentage = (currentScroll / scrollMax) * 100;
       
-      // Snap to 100% if we are within 20px from the bottom
-      if (currentScroll + window.innerHeight >= scrollHeight - 20) {
+      // Snap to 100% if very close to bottom
+      if (currentScroll + clientHeight >= scrollHeight - 30) {
         percentage = 100;
       }
+      return percentage;
+    };
 
-      percentage = Math.min(100, Math.max(0, percentage));
-      
-      if (percentage > maxScroll) {
-        maxScroll = percentage;
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'scroll', 
-          percentage: maxScroll
-        }));
-      }
+    // 1. Handle Scroll
+    let throttleTimeout;
+    window.addEventListener('scroll', function() {
+      if (throttleTimeout) return;
+      throttleTimeout = setTimeout(() => {
+        const perc = calculateScroll();
+        if (perc > maxScroll) {
+          maxScroll = perc;
+          sendUpdate(maxScroll);
+        }
+        throttleTimeout = null;
+      }, 200);
     });
 
-    // Handle pages that might be too short to scroll
-    setTimeout(() => {
-        const scrollHeight = document.documentElement.scrollHeight;
-        if (scrollHeight <= window.innerHeight + 10) {
-             window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', percentage: 100 }));
+    // 2. Handle Dynamic Content (ResizeObserver)
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(entries => {
+        const perc = calculateScroll();
+        if (perc > maxScroll) {
+          maxScroll = perc;
+          sendUpdate(maxScroll);
         }
-    }, 1500);
+      });
+      ro.observe(document.body);
+    }
+
+    // 3. Initial Check & Metadata
+    setTimeout(() => {
+      const charCount = document.body.innerText.length;
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'metadata', 
+        charCount: charCount 
+      }));
+      
+      const initialPerc = calculateScroll();
+      if (initialPerc > 0) {
+        maxScroll = initialPerc;
+        sendUpdate(maxScroll);
+      }
+    }, 1000);
   })();
 `;
 
@@ -221,7 +238,7 @@ export default function ResourcePreview({ resourceId, type, url, onClose, visibl
                         { opacity: pressed ? 0.6 : 1 }
                     ]}
                 >
-                    <Text style={styles.closeText}>✕</Text>
+                    <Ionicons name="close" size={24} color="#fff" />
                 </Pressable>
             </View>
         </Modal>

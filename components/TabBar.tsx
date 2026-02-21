@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useSegments } from 'expo-router';
-import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useRef } from 'react';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, palette, radius } from '../lib/theme';
 
@@ -20,44 +20,34 @@ export default function TabBar() {
         segments.includes('phase-completed')
     ) return null;
 
+    const TabButton = ({ onPress, name, activeName, isActive }: { onPress: () => void, name: any, activeName: any, isActive: boolean }) => {
+        const scaleAnim = useRef(new Animated.Value(1)).current
+        const handlePress = () => {
+            Animated.sequence([
+                Animated.timing(scaleAnim, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 10 }),
+            ]).start()
+            onPress()
+        }
+        return (
+            <Pressable style={styles.tab} onPress={handlePress}>
+                <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                    <Ionicons
+                        name={isActive ? activeName : name}
+                        size={22}
+                        color={isActive ? colors.primary : colors.mutedText}
+                    />
+                </Animated.View>
+            </Pressable>
+        )
+    }
+
     return (
         <View style={[styles.container, { bottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.content}>
-                <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => router.replace('/')}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name={isHome ? "home" : "home-outline"}
-                        size={22}
-                        color={isHome ? colors.primary : colors.mutedText}
-                    />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => router.push('/course/any')}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name={isCourse ? "map" : "map-outline"}
-                        size={22}
-                        color={isCourse ? colors.primary : colors.mutedText}
-                    />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => router.replace('/profile')}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name={isProfile ? "person" : "person-outline"}
-                        size={22}
-                        color={isProfile ? colors.primary : colors.mutedText}
-                    />
-                </TouchableOpacity>
+                <TabButton onPress={() => router.replace('/')} name="home-outline" activeName="home" isActive={isHome} />
+                <TabButton onPress={() => router.push('/course/any')} name="map-outline" activeName="map" isActive={isCourse} />
+                <TabButton onPress={() => router.replace('/profile')} name="person-outline" activeName="person" isActive={isProfile} />
             </View>
         </View>
     );

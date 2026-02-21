@@ -3,10 +3,11 @@ import SkillAssessment, { AssessmentQuestion } from '@/components/SkillAssessmen
 import { LoadingStatus } from '@/lib/loadingMessages'
 import { supabase } from '@/lib/supabase'
 import { palette, radius, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
-import { useRef, useState } from 'react'
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Animated, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -37,6 +38,16 @@ export default function NewCourseAIScreen() {
   const [assessmentQuestions, setAssessmentQuestions] = useState<AssessmentQuestion[]>([])
   const [showAssessment, setShowAssessment] = useState(false)
   const assessmentResolveRef = useRef<((startIndex: number) => void) | null>(null)
+
+  // Fade-in on mount
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start()
+  }, [])
 
   async function handleGenerateComplete() {
     if (!courseInput.trim()) return
@@ -257,7 +268,7 @@ export default function NewCourseAIScreen() {
   const insets = useSafeAreaInsets()
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.white }}>
+    <Animated.View style={{ flex: 1, backgroundColor: palette.white, opacity: fadeAnim }}>
       <ScrollView
         contentContainerStyle={{
           padding: spacing.lg,
@@ -269,7 +280,7 @@ export default function NewCourseAIScreen() {
 
         {/* Pulsante Indietro */}
         <Pressable onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: palette.black, justifyContent: 'center', alignItems: 'center', marginBottom: spacing.xl }}>
-          <Text style={{ fontSize: 20, fontWeight: '800' }}>←</Text>
+          <Ionicons name="arrow-back" size={24} color={palette.black} />
         </Pressable>
 
         <Text style={{ ...typography.title, marginBottom: 8 }}>
@@ -349,7 +360,13 @@ export default function NewCourseAIScreen() {
           />
 
           <Text style={{ color: palette.gray, fontSize: 14, fontWeight: '600', marginTop: spacing.sm }}>
-            {stepsPerWeek <= 2 ? '🏁 Passo rilassato' : stepsPerWeek <= 5 ? '⚡ Passo costante' : '🔥 Passo intensivo'}
+            {stepsPerWeek <= 2 ? (
+              <><Ionicons name="flag-outline" size={14} /> Passo rilassato</>
+            ) : stepsPerWeek <= 5 ? (
+              <><Ionicons name="flash-outline" size={14} /> Passo costante</>
+            ) : (
+              <><Ionicons name="flame-outline" size={14} /> Passo intensivo</>
+            )}
           </Text>
         </View>
 
@@ -362,7 +379,7 @@ export default function NewCourseAIScreen() {
             {(['video', 'mixed', 'web'] as const).map((mode) => {
               const isActive = searchMode === mode
               const labels = { video: 'Video', mixed: 'Misto', web: 'Web' }
-              const icons = { video: '▶️', mixed: '✨', web: '🌐' }
+              const icons = { video: 'play-outline', mixed: 'sparkles-outline', web: 'globe-outline' } as const
 
               return (
                 <Pressable
@@ -382,7 +399,7 @@ export default function NewCourseAIScreen() {
                     fontWeight: '800',
                     fontSize: 14
                   }}>
-                    {icons[mode]} {labels[mode]}
+                    <Ionicons name={icons[mode]} size={16} color={isActive ? palette.white : palette.black} /> {labels[mode]}
                   </Text>
                 </Pressable>
               )
@@ -417,7 +434,9 @@ export default function NewCourseAIScreen() {
             borderWidth: 2,
             borderColor: '#FF4444'
           }}>
-            <Text style={{ color: '#FF4444', fontWeight: '900', marginBottom: 4 }}>⚠️ ERRORE</Text>
+            <Text style={{ color: '#FF4444', fontWeight: '900', marginBottom: 4 }}>
+              <Ionicons name="warning-outline" size={16} color="#FF4444" /> ERRORE
+            </Text>
             <Text style={{ color: '#666', fontSize: 14, fontWeight: '500' }}>{error}</Text>
           </View>
         )}
@@ -442,6 +461,6 @@ export default function NewCourseAIScreen() {
           }}
         />
       </Modal>
-    </View>
+    </Animated.View>
   )
 }

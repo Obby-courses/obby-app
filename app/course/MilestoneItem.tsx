@@ -1,8 +1,11 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
 import ResourcePreview from '@/components/ResourcePreview'
-import { palette, spacing, typography } from '@/lib/theme'
+import { componentStyles, icons, palette, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import React, { useState } from 'react'
 import {
+    Image,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -35,6 +38,7 @@ type MilestoneItemProps = {
     nextPhaseTitle?: string | null
     isNextPhaseGenerated?: boolean
     onRefresh: (shouldClose?: boolean) => void
+    onClose?: () => void
     courseColor?: string
 }
 
@@ -45,6 +49,7 @@ export default function MilestoneItem({
     nextPhaseTitle,
     isNextPhaseGenerated,
     onRefresh,
+    onClose,
     courseColor = palette.black,
 }: MilestoneItemProps) {
     const insets = useSafeAreaInsets()
@@ -58,6 +63,7 @@ export default function MilestoneItem({
         url: '',
         resourceId: undefined
     })
+    const [smartScale, setSmartScale] = useState(1.05)
 
     React.useEffect(() => {
         if ((milestone as any).isVirtual) {
@@ -66,6 +72,26 @@ export default function MilestoneItem({
             setLocalMilestone(milestone)
         }
     }, [milestone])
+
+    React.useEffect(() => {
+        const thumbUrl = localMilestone.target_config?.support_resource?.thumbnail_url
+        if (thumbUrl) {
+            Image.getSize(thumbUrl, (w, h) => {
+                const ratio = w / h
+                // YouTube SD thumbs (hqdefault.jpg) are 4:3 (1.33) but often have 16:9 content
+                // which leaves large black bars top/bottom. A 1.35x zoom usually removes them.
+                if (ratio < 1.4) {
+                    setSmartScale(1.35)
+                } else {
+                    setSmartScale(1.05)
+                }
+            }, () => {
+                setSmartScale(1.05)
+            })
+        } else {
+            setSmartScale(1.05)
+        }
+    }, [localMilestone.target_config?.support_resource?.thumbnail_url])
 
     async function handleGenerateMilestone() {
         if (!(milestone as any).isVirtual) return
@@ -146,31 +172,55 @@ export default function MilestoneItem({
     }
 
     return (
-        <View style={{ flex: 1 }}>
+        <View style={styles.container}>
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{
-                    paddingBottom: insets.bottom + 120, // Aumentato per footer sticky
-                    paddingHorizontal: spacing.lg,
+                    paddingBottom: insets.bottom + 140, // Space for the hovering footer
                 }}
                 showsVerticalScrollIndicator={false}
             >
-                <View style={styles.card}>
+                {/* HEADER SECTION (Like Hero but simpler) */}
+                <View style={[styles.headerSection, { backgroundColor: courseColor + '10' }]}>
+                    {/* Top Controls - STATIC */}
+                    <View style={[styles.topControls, { paddingTop: insets.top + spacing.md }]}>
+                        {onClose && (
+                            <Pressable
+                                onPress={onClose}
+                                style={componentStyles.closeButton}
+                            >
+                                <Ionicons name={icons.close} size={24} color={palette.black} />
+                            </Pressable>
+                        )}
+                    </View>
+
+                    <View style={styles.headerContent}>
+                        <Text style={styles.badge}>TRAGUARDO</Text>
+                        <Text style={styles.mainTitle}>
+                            {localMilestone.title}
+                        </Text>
+                    </View>
+
+                    <LinearGradient
+                        colors={['transparent', 'rgba(255,255,255,0.8)', palette.white]}
+                        style={styles.heroGradient}
+                    />
+                </View>
+
+                {/* CONTENT SECTION */}
+                <View style={styles.content}>
                     {error && (
                         <View style={styles.errorBox}>
-                            <Text style={{ color: '#FF4444', fontWeight: '800' }}>⚠️ {error}</Text>
+                            <Text style={{ color: '#FF4444', fontWeight: '800' }}>
+                                <Ionicons name={icons.warning} size={16} color="#FF4444" /> {error}
+                            </Text>
                         </View>
                     )}
 
-                    <Text style={styles.badge}>TRAGUARDO</Text>
-                    <Text style={styles.title}>{localMilestone.title}</Text>
-
-                    <View style={styles.divider} />
-
                     <Text style={styles.description}>{localMilestone.description}</Text>
 
-                    <View style={[styles.typeContainer, { backgroundColor: palette.lightGray }]}>
-                        <Text style={styles.typeLabel}>Modalità di verifica:</Text>
+                    <View style={[styles.typeContainer, { backgroundColor: '#F8FAFC' }]}>
+                        <Text style={styles.typeLabel}>MODALITÀ DI VERIFICA:</Text>
                         <Text style={styles.typeValue}>
                             {localMilestone.milestone_type?.replace('_', ' ').toUpperCase() || 'VALUTAZIONE'}
                         </Text>
@@ -192,21 +242,29 @@ export default function MilestoneItem({
                                                 visible: true,
                                                 type: res.type === 'video' ? 'youtube' : 'webpage',
                                                 url: res.url,
-                                                // Support resources in milestones are often JSON blobs, 
-                                                // they might not have a database ID in 'resources' table if they are just embedded config.
-                                                // If they DO come from resources table, we should pass ID.
-                                                // For now, let's pass milestone.resource_id if it matches, otherwise undefined.
                                                 resourceId: milestone.resource_id || undefined
                                             })
                                         }
                                     }}
                                     style={styles.resourceCard}
                                 >
-                                    <View style={styles.resourceTypeIcon}>
-                                        <Text style={{ fontSize: 20 }}>
-                                            {localMilestone.target_config.support_resource.type === 'video' ? '📺' : '🔗'}
-                                        </Text>
-                                    </View>
+                                    {localMilestone.target_config.support_resource.thumbnail_url ? (
+                                        <View style={styles.thumbnailWrapper}>
+                                            <Image
+                                                source={{ uri: localMilestone.target_config.support_resource.thumbnail_url }}
+                                                style={[styles.thumbnailImage, { transform: [{ scale: smartScale }] }]}
+                                                resizeMode="cover"
+                                            />
+                                        </View>
+                                    ) : (
+                                        <View style={styles.resourceTypeIcon}>
+                                            <Ionicons
+                                                name={localMilestone.target_config.support_resource.type === 'video' ? icons.video : icons.link}
+                                                size={24}
+                                                color="#64748B"
+                                            />
+                                        </View>
+                                    )}
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.resourceTitle} numberOfLines={2}>
                                             {localMilestone.target_config.support_resource.title}
@@ -219,26 +277,39 @@ export default function MilestoneItem({
                             )}
                         </View>
                     )}
-
-                    <View style={{ height: 20 }} />
                 </View>
             </ScrollView>
 
-            <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-                <Pressable
-                    onPress={handleStartNextPhase}
-                    disabled={isGenerating}
-                    style={[
-                        styles.button,
-                        { backgroundColor: courseColor === palette.black ? palette.black : courseColor },
-                        isGenerating && { opacity: 0.6 }
-                    ]}
-                >
-                    <Text style={[styles.buttonText, { color: courseColor === palette.black ? palette.white : palette.black }]}>
-                        {nextPhaseTitle ? 'NUOVA FASE' : 'COMPLETA PERCORSO'}
-                    </Text>
-                </Pressable>
+            {/* HOVERING FOOTER */}
+            <View style={styles.footerWrapper} pointerEvents="box-none">
+                <LinearGradient
+                    colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.9)', palette.white]}
+                    style={styles.footerGradient}
+                    pointerEvents="none"
+                />
+                <View style={[styles.footerContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+                    <Pressable
+                        onPress={handleStartNextPhase}
+                        disabled={isGenerating}
+                        style={[
+                            styles.completeBtn,
+                            isGenerating && { opacity: 0.6 }
+                        ]}
+                    >
+                        <LinearGradient
+                            colors={courseColor === palette.black ? [palette.black, '#333'] : [courseColor, courseColor]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.completeBtnGradient}
+                        >
+                            <Text style={[styles.completeBtnText, { color: courseColor === palette.black ? palette.white : palette.black }]}>
+                                {nextPhaseTitle ? 'NUOVA FASE' : 'COMPLETA PERCORSO'}
+                            </Text>
+                        </LinearGradient>
+                    </Pressable>
+                </View>
             </View>
+
             <LoadingOverlay visible={isGenerating} status={loadingStatus} />
             <ResourcePreview
                 visible={previewData.visible}
@@ -252,19 +323,40 @@ export default function MilestoneItem({
 }
 
 const styles = StyleSheet.create({
-    card: {
+    container: {
+        flex: 1,
         backgroundColor: palette.white,
-        borderRadius: 40,
-        padding: 32,
-        borderWidth: 2,
-        borderColor: palette.border,
-        minHeight: 480,
-        marginTop: 20,
-        shadowColor: palette.black,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
-        shadowRadius: 20,
-        elevation: 10,
+    },
+    headerSection: {
+        width: '100%',
+        minHeight: 240,
+        position: 'relative',
+        paddingHorizontal: spacing.xl,
+        justifyContent: 'center',
+    },
+    headerContent: {
+        marginTop: 40,
+    },
+    topControls: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        paddingHorizontal: spacing.xl,
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 20,
+    },
+    heroGradient: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 80,
+    },
+    content: {
+        paddingHorizontal: spacing.xl,
+        zIndex: 10,
     },
     errorBox: {
         backgroundColor: '#FFEBEB',
@@ -279,21 +371,19 @@ const styles = StyleSheet.create({
         fontSize: 12,
         letterSpacing: 2,
         marginBottom: 8,
+        color: palette.gray600,
     },
-    title: {
+    mainTitle: {
         ...typography.title,
-        fontSize: 32,
-        marginBottom: spacing.md,
-    },
-    divider: {
-        height: 2,
-        backgroundColor: palette.border,
-        marginBottom: spacing.xl,
+        fontSize: 34,
+        lineHeight: 40,
+        color: palette.black,
+        fontWeight: '900',
     },
     description: {
         ...typography.body,
-        color: '#444',
-        fontSize: 16,
+        color: '#334155',
+        fontSize: 17,
         lineHeight: 26,
     },
     typeContainer: {
@@ -301,55 +391,65 @@ const styles = StyleSheet.create({
         borderRadius: 24,
         marginTop: 40,
         borderWidth: 1,
-        borderColor: palette.border,
+        borderColor: '#F1F5F9',
     },
     typeLabel: {
         ...typography.label,
-        fontSize: 11,
+        fontSize: 10,
+        color: '#64748B',
         marginBottom: 4,
+        letterSpacing: 1,
     },
     typeValue: {
         ...typography.body,
         fontWeight: '800',
-        fontSize: 14,
+        fontSize: 16,
+        color: palette.black,
     },
-    button: {
-        paddingVertical: 18,
-        borderRadius: 30,
-        marginTop: 20,
-        shadowColor: palette.black,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    buttonText: {
-        textAlign: 'center',
-        fontWeight: '900',
-        fontSize: 14,
-        letterSpacing: 1,
-    },
-    stickyFooter: {
+    footerWrapper: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        height: 180,
+        justifyContent: 'flex-end',
+    },
+    footerGradient: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    footerContent: {
+        paddingHorizontal: spacing.xl,
         paddingTop: spacing.md,
-        paddingHorizontal: spacing.lg,
-        borderTopWidth: 1,
-        borderTopColor: palette.border,
-        shadowColor: palette.black,
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 10,
+    },
+    completeBtn: {
+        height: 56,
+        borderRadius: 20,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        elevation: 6,
+    },
+    completeBtnGradient: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    completeBtnText: {
+        fontWeight: '900',
+        fontSize: 16,
+        letterSpacing: 1,
     },
     supportSection: {
         marginTop: 32,
         paddingTop: 32,
         borderTopWidth: 1,
-        borderTopColor: palette.border,
+        borderTopColor: '#F1F5F9',
     },
     supportLabel: {
         ...typography.label,
@@ -360,20 +460,20 @@ const styles = StyleSheet.create({
     },
     supportSummary: {
         ...typography.body,
-        fontSize: 15,
-        color: '#555',
+        fontSize: 16,
+        color: '#475569',
         fontStyle: 'italic',
-        lineHeight: 22,
+        lineHeight: 24,
         marginBottom: 20,
     },
     resourceCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F8F9FA',
+        backgroundColor: '#F8FAFC',
         padding: 16,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: palette.border,
+        borderColor: '#F1F5F9',
         gap: 16,
     },
     resourceTypeIcon: {
@@ -384,7 +484,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: palette.border,
+        borderColor: '#E2E8F0',
     },
     resourceTitle: {
         ...typography.body,
@@ -396,5 +496,19 @@ const styles = StyleSheet.create({
         ...typography.label,
         fontSize: 10,
         marginTop: 2,
+        color: '#64748B',
+    },
+    thumbnailWrapper: {
+        width: 60,
+        height: 60,
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    thumbnailImage: {
+        width: '110%',
+        height: '110%',
+        left: '-5%',
     },
 })

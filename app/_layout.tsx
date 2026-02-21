@@ -33,6 +33,8 @@ function RootLayoutNav() {
         screenOptions={{
           headerShown: false,
           gestureEnabled: false,
+          animation: 'fade',
+          animationDuration: 300,
         }}
       />
       <TabBar />

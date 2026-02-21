@@ -1,4 +1,5 @@
 import { palette, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import React, { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Directions, Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -118,13 +119,13 @@ export default function WeeklyCalendar({ tasksByDate }: WeeklyCalendarProps) {
                 <View style={[styles.header, !expanded && { justifyContent: 'center', marginBottom: 6, paddingHorizontal: 0 }]}>
                     {expanded && (
                         <Pressable onPress={() => changeMonth(-1)} style={styles.navButton} hitSlop={15}>
-                            <Text style={styles.navText}>←</Text>
+                            <Ionicons name="chevron-back" size={16} color={palette.black} />
                         </Pressable>
                     )}
                     <Text style={styles.monthTitle}>{monthLabel}</Text>
                     {expanded && (
                         <Pressable onPress={() => changeMonth(1)} style={styles.navButton} hitSlop={15}>
-                            <Text style={styles.navText}>→</Text>
+                            <Ionicons name="chevron-forward" size={16} color={palette.black} />
                         </Pressable>
                     )}
                 </View>

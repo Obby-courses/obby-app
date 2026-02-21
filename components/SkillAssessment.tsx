@@ -1,4 +1,5 @@
 import { palette, spacing, typography } from '@/lib/theme'
+import { Ionicons } from '@expo/vector-icons'
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
     Animated,
@@ -175,7 +176,7 @@ export default function SkillAssessment({
         return (
             <View style={[styles.container, { paddingTop: insets.top }]}>
                 <View style={styles.centerContent}>
-                    <Text style={styles.finishedEmoji}>🎯</Text>
+                    <Ionicons name="checkmark-circle" size={80} color={courseColor} style={{ marginBottom: 20 }} />
                     <Text style={styles.finishedTitle}>Livello identificato!</Text>
                     <Text style={styles.finishedSubtitle}>
                         Stiamo preparando il tuo percorso personalizzato...

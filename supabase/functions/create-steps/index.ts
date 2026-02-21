@@ -2,14 +2,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-    CURRICULUM_ASSEMBLY_PROMPT,
-    PRE_PHASE_ANALYSIS_PROMPT,
-    THEME_DISCOVERY_PROMPT,
-    USER_CURRICULUM_ASSEMBLY_PROMPT,
-    USER_PRE_PHASE_ANALYSIS_PROMPT,
-    USER_THEME_DISCOVERY_PROMPT,
-    USER_VALIDATION_PROMPT,
-    VALIDATION_PROMPT
+  CURRICULUM_ASSEMBLY_PROMPT,
+  PRE_PHASE_ANALYSIS_PROMPT,
+  THEME_DISCOVERY_PROMPT,
+  USER_CURRICULUM_ASSEMBLY_PROMPT,
+  USER_PRE_PHASE_ANALYSIS_PROMPT,
+  USER_THEME_DISCOVERY_PROMPT,
+  USER_VALIDATION_PROMPT,
+  VALIDATION_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -108,6 +108,59 @@ function filterQualityResources(resources: ResourceCandidate[]): ResourceCandida
   })
 }
 
+// Helper to extract metadata from a web page
+async function fetchWebThumbnail(url: string): Promise<string | null> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000) // Slightly longer timeout
+    
+    const response = await fetch(url, { signal: controller.signal })
+    const html = await response.text()
+    clearTimeout(timeout)
+
+    // 1. Try Open Graph Image (The most reliable for articles)
+    const ogMatch = html.match(/<meta\s+[^>]*property=["']og:image["']\s+content=["']([^"']+)["']/i) || 
+                    html.match(/<meta\s+[^>]*content=["']([^"']+)["']\s+property=["']og:image["']/i)
+    if (ogMatch?.[1]) return ogMatch[1].startsWith('//') ? `https:${ogMatch[1]}` : ogMatch[1]
+
+    // 2. Try Twitter Image
+    const twitterMatch = html.match(/<meta\s+[^>]*name=["']twitter:image["']\s+content=["']([^"']+)["']/i)
+    if (twitterMatch?.[1]) return twitterMatch[1]
+
+    // 3. Extraction Logic: Find the first significant <img> tag
+    // We look for src that looks like an image and isn't a tiny icon/pixel
+    const imgMatches = html.matchAll(/<img\s+[^>]*src=["']([^"']+)["']/gi)
+    const baseUrl = new URL(url)
+
+    for (const match of imgMatches) {
+        let src = match[1]
+        
+        // Filter out junk
+        const isJunk = src.includes('favicon') || 
+                       src.includes('logo') || 
+                       src.includes('icon') || 
+                       src.includes('pixel') ||
+                       src.includes('ads') ||
+                       src.length < 10
+
+        if (!isJunk) {
+            // Resolve relative URLs
+            if (!src.startsWith('http')) {
+                try {
+                    src = new URL(src, baseUrl).href
+                } catch (e) { continue }
+            }
+            return src
+        }
+    }
+
+    return null
+  } catch (e) {
+    console.warn(`[METADATA] Could not fetch thumbnail for ${url}:`, e.message)
+    return null
+  }
+}
+
 // Duplicate URL checker and resource creator
 async function getOrCreateResource(
   supabase: any,
@@ -115,16 +168,27 @@ async function getOrCreateResource(
 ): Promise<{ id: string }> {
   const cleanUrl = resource.url.trim()
   
-  // Check if URL already exists - use .limit(1) to avoid .single() error on duplicates
-  const { data: existing, error: checkError } = await supabase
+  // Check if URL already exists
+  const { data: existing } = await supabase
     .from('resources')
-    .select('id')
+    .select('id, thumbnail_url')
     .eq('url', cleanUrl)
     .limit(1)
   
   if (existing && existing.length > 0) {
     console.log(`[DEDUP] Resource already exists: ${cleanUrl}`)
     return { id: existing[0].id }
+  }
+
+  // SCRAPING ENHANCEMENT: If thumbnail is missing and it's a webpage, try to fetch it
+  let finalThumbnail = resource.thumbnail_url
+  if (!finalThumbnail && resource.type === 'webpage') {
+    console.log(`[SCRAPING] Fetching metadata for: ${cleanUrl}`)
+    const extracted = await fetchWebThumbnail(cleanUrl)
+    if (extracted) {
+      console.log(`[SCRAPING] Found thumbnail: ${extracted}`)
+      finalThumbnail = extracted
+    }
   }
   
   // Create new resource
@@ -133,7 +197,7 @@ async function getOrCreateResource(
     .insert({
       title: resource.title,
       url: cleanUrl,
-      thumbnail_url: resource.thumbnail_url,
+      thumbnail_url: finalThumbnail,
       summary: resource.description,
       type: resource.type
     })
