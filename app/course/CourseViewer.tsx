@@ -2,8 +2,8 @@ import { getCourseColor } from '@/constants/courseColors'
 import { supabase } from '@/lib/supabase'
 import { colors, radius, spacing, typography } from '@/lib/theme'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
-import { useEffect, useRef, useState } from 'react'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
     ActivityIndicator,
     Alert,
@@ -33,6 +33,7 @@ type Resource = {
     thumbnail_url?: string | null
     avg_rating?: number
     summary?: string | null
+    created_at?: string
 }
 
 type Step = {
@@ -59,11 +60,10 @@ type Phase = {
 }
 
 type Milestone = {
-    id: string
-    title: string
-    description: string
     milestone_type: string
     phase_id: string
+    completed?: boolean
+    status?: string | null
 }
 
 /* ---------------- HELPERS ---------------- */
@@ -77,9 +77,10 @@ function isPhaseCompleted(phaseId: string, steps: Step[]) {
 type CourseViewerProps = {
     courseId: string;
     hideHeader?: boolean;
+    isActive?: boolean;
 }
 
-export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps) {
+export default function CourseViewer({ courseId, hideHeader, isActive }: CourseViewerProps) {
     const router = useRouter()
     const insets = useSafeAreaInsets()
 
@@ -90,6 +91,7 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
     const [macroPhases, setMacroPhases] = useState<any[]>([])
     const [steps, setSteps] = useState<Step[]>([])
     const [milestones, setMilestones] = useState<Milestone[]>([])
+    const [colorIndex, setColorIndex] = useState<number | null>(null)
 
     // Flattened list of ALL items to render in the map
     const [mapItems, setMapItems] = useState<any[]>([])
@@ -100,7 +102,7 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
     const initialized = useRef(false)
     const flatListRef = useRef<FlatList<any>>(null)
 
-    const courseColor = courseId ? getCourseColor(courseId) : colors.primary
+    const courseColor = courseId ? getCourseColor(courseId, colorIndex) : colors.primary
 
     /* ---------------- LOAD ---------------- */
 
@@ -109,12 +111,22 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
         loadAllData()
     }, [courseId])
 
+    useFocusEffect(
+        useCallback(() => {
+            if (isActive) {
+                loadAllData()
+            }
+        }, [isActive])
+    )
+
     useEffect(() => {
         if (mapItems.length > 0 && !initialized.current) {
             // Find index of first incomplete step
             const firstIncompleteIdx = mapItems.findIndex(item => {
                 if (item.isMilestone) {
-                    return !isPhaseCompleted(item.phase_id, steps)
+                    // Target milestone if all steps in its phase are done but milestone isn't
+                    const phaseDone = isPhaseCompleted(item.phase_id, steps)
+                    return phaseDone && !item.completed
                 }
                 return !item.completed
             })
@@ -125,7 +137,7 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                 flatListRef.current?.scrollToIndex({
                     index: targetIdx,
                     animated: false,
-                    viewPosition: 0.33
+                    viewPosition: 0.5
                 })
                 setTimeout(() => setMapReady(true), 50)
             }
@@ -144,7 +156,7 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
             const [courseRes, macroPhasesRes, phasesRes, stepsRes] = await Promise.all([
                 supabase
                     .from('courses')
-                    .select('title, days_per_step, created_at')
+                    .select('title, days_per_step, created_at, color_index')
                     .eq('id', courseId)
                     .single(),
                 supabase
@@ -177,7 +189,8 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                             type,
                             thumbnail_url,
                             avg_rating,
-                            summary
+                            summary,
+                            created_at
                         )
                     `)
                     .eq('course_id', courseId)
@@ -187,6 +200,7 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                 setCourseTitle(courseRes.data.title)
                 if (courseRes.data.days_per_step) setDaysPerStep(courseRes.data.days_per_step)
                 if (courseRes.data.created_at) setCourseCreatedAt(courseRes.data.created_at)
+                setColorIndex(courseRes.data.color_index ?? null)
             }
 
             const macroPhasesData = macroPhasesRes.data || []
@@ -474,19 +488,33 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                                 height: 44,
                                 borderRadius: radius.md,
                                 borderWidth: 2,
-                                borderColor: colors.primary,
+                                borderColor: courseColor,
                                 justifyContent: 'center',
                                 alignItems: 'center',
                                 backgroundColor: colors.background
                             }}
                         >
-                            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+                            <Ionicons name="arrow-back" size={24} color={courseColor} />
                         </Pressable>
                         <View style={{ flex: 1, marginHorizontal: 15 }}>
                             <Text style={{ ...typography.label, color: colors.mutedText }}>Il tuo percorso</Text>
                             <Text style={{ ...typography.header, color: colors.textPrimary }} numberOfLines={1}>{courseTitle}</Text>
                         </View>
-                        <View style={{ width: 44 }} />
+                        <Pressable
+                            onPress={() => router.push({
+                                pathname: '/course/[id]/settings',
+                                params: { id: courseId }
+                            })}
+                            style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: radius.md,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                            }}
+                        >
+                            <Ionicons name="ellipsis-vertical" size={24} color={courseColor} />
+                        </Pressable>
                     </View>
                 </View>
             )}
@@ -501,7 +529,8 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                     paddingBottom: 20,
                     paddingTop: 40
                 }}
-                ListHeaderComponent={<View style={{ height: height / 4 }} />}
+                ListHeaderComponent={<View style={{ height: height / 2 }} />}
+                ListFooterComponent={<View style={{ height: height / 2 }} />}
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
                 onScrollToIndexFailed={(info) => {
@@ -530,9 +559,6 @@ export default function CourseViewer({ courseId, hideHeader }: CourseViewerProps
                                 step={selectedStep}
                                 onUpdateStatus={async (id, status) => {
                                     await updateStepStatus(id, status)
-                                    if (status === 'completed' || status === 'skipped') {
-                                        setSelectedStep(null)
-                                    }
                                 }}
                                 onClose={() => setSelectedStep(null)}
                                 index={currentIdx}

@@ -9,6 +9,8 @@ type Profile = {
     avatar_url: string | null
     website: string | null
     updated_at: string
+    primary_language: string
+    secondary_languages: string[]
 }
 
 type AuthContextType = {

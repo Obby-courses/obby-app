@@ -1,15 +1,16 @@
 // @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { categorizeResource } from '../categorize-resource.ts'
 import {
-  CURRICULUM_ASSEMBLY_PROMPT,
-  PRE_PHASE_ANALYSIS_PROMPT,
-  THEME_DISCOVERY_PROMPT,
-  USER_CURRICULUM_ASSEMBLY_PROMPT,
-  USER_PRE_PHASE_ANALYSIS_PROMPT,
-  USER_THEME_DISCOVERY_PROMPT,
-  USER_VALIDATION_PROMPT,
-  VALIDATION_PROMPT
+    CURRICULUM_ASSEMBLY_PROMPT,
+    PRE_PHASE_ANALYSIS_PROMPT,
+    THEME_DISCOVERY_PROMPT,
+    USER_CURRICULUM_ASSEMBLY_PROMPT,
+    USER_PRE_PHASE_ANALYSIS_PROMPT,
+    USER_THEME_DISCOVERY_PROMPT,
+    USER_VALIDATION_PROMPT,
+    VALIDATION_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -191,7 +192,14 @@ async function getOrCreateResource(
     }
   }
   
-  // Create new resource
+  // Categorize resource via LLM before saving
+  const metadata = await categorizeResource({
+    title: resource.title,
+    description: resource.description,
+    type: resource.type
+  })
+
+  // Create new resource with categorization metadata
   const { data: newResource, error: createError } = await supabase
     .from('resources')
     .insert({
@@ -199,7 +207,15 @@ async function getOrCreateResource(
       url: cleanUrl,
       thumbnail_url: finalThumbnail,
       summary: resource.description,
-      type: resource.type
+      type: resource.type,
+      domain: metadata.domain,
+      subdomain: metadata.subdomain,
+      primary_topics: metadata.primary_topics,
+      skill_level: metadata.skill_level,
+      learning_objectives: metadata.learning_objectives,
+      prerequisites: metadata.prerequisites,
+      language: metadata.language,
+      searchable_text: metadata.searchable_text
     })
     .select('id')
     .single()
@@ -550,6 +566,20 @@ serve(async (req: Request) => {
     }
 
     console.log(`[FILTER] ${qualityResources.length} candidates passed filter`)
+
+    // FIX 1: URL-level dedup — keep only the first occurrence of each URL
+    // Prevents the same video from appearing twice under different temp UUIDs
+    const seenUrls = new Set<string>()
+    qualityResources = qualityResources.filter(r => {
+      const key = r.url.trim().toLowerCase()
+      if (seenUrls.has(key)) {
+        console.log(`[DEDUP-POOL] Removed duplicate resource (same URL): ${r.title} — ${key}`)
+        return false
+      }
+      seenUrls.add(key)
+      return true
+    })
+    console.log(`[DEDUP-POOL] ${qualityResources.length} unique-URL candidates after dedup`)
 
     if (qualityResources.length === 0) {
          throw new Error("No valid resources found for this phase matching quality criteria.")

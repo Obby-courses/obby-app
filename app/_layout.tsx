@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import TabBar from '../components/TabBar'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 
-console.log('🔥 _layout FILE LOADED')
+
 
 function RootLayoutNav() {
   const { session, loading } = useAuth()

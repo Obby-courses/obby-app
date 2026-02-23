@@ -3,9 +3,9 @@
    ======================================================= */
 
 /**
- * 🌍 LANGUAGE RULE:
- * All prompts must detect the language of the user's input (Course Title, Topic, or Phase Description)
- * and respond EXCLUSIVELY in that same language for all generated content.
+ * 🌍 REGOLA LINGUISTICA:
+ * Tutti i testi generati (Titoli, Descrizioni, Step, Milestone, Quiz) devono essere
+ * ESCLUSIVAMENTE in lingua ITALIANA.
  */
 
 // -------------------------------------------------------
@@ -42,7 +42,7 @@ REGOLE OBBLIGATORIE:
 - **verification_mode**: Scegli esattamente UNO dei seguenti valori in base al topic: "audio_performance", "video_performance", "physical_result", "code_repository", "project_delivery", "text_submission".
 - description: Spiega cosa l'utente saprà FARE concretamente al termine della macro-fase.
 - keywords: 5-8 parole chiave PRATICHE.
-- **LINGUA**: Rileva la lingua del topic e rispondi in quella lingua per description e titoli (se tradotti in EN usa quelli indicati sopra). Se il topic è in Italiano, usa i titoli in Italiano.
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA. Ignora la lingua del topic se diversa. All generated fields (description, titles, keywords) MUST be in Italian.
 
 FILOSOFIA:
 - Ogni macro-fase deve contenere azione pratica.
@@ -78,7 +78,7 @@ CRITICAL INSTRUCTIONS:
 
 - **Domain Specificity**: Use technical terminology specific to the course domain
 
-- **Language**: Detect the language of the provided context and respond EXCLUSIVELY in that language
+- **Language**: Respond EXCLUSIVELY in ITALIAN. Even if the context is in another language, titles and descriptions must be in Italian.
 
 - **Strict Boundary**: Generate phases ONLY for the specific domain provided. NO hallucinations from unrelated fields.
 
@@ -179,7 +179,7 @@ RULES:
   }
 - Mantieni una progressione logica tra step.
 - Non aggiungere campi extra.
-- **LANGUAGE**: Detect the language of the provided context (Phase Title/Description) and respond EXCLUSIVELY in that same language for title and description.
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA per titoli e descrizioni. Ignora la lingua del contesto.
 - Return a JSON object with a single key "steps" containing the array of generated steps.
 `;
 
@@ -231,7 +231,7 @@ RULES:
 - **USE BROAD, COMMON TERMS**: Use words like "Tutorial", "Guide", "Lesson", "Course" for educational steps. 
 - **SHOWCASE EXCEPTION**: If the step intent is to see a result or demonstration (indicated by words like "Demonstration", "Performance", "Showcase", "Example"), use those specific keywords instead of "Tutorial".
 - **AVOID OVER-SPECIFICITY**: Do not include too many adjectives. "Guitar chords tutorial" is better than "Guitar chords for beginners with small hands tutorial".
-- **LANGUAGE**: Detect the language of the provided context (Course/Step) and generate the search query optimized for that language.
+- **LINGUA**: Genera la query di ricerca ottimizzata per trovare contenuti pertinenti, ma assicurati che ogni testo di accompagnamento o metadato richiesto sia in ITALIANO. La query stessa può contenere termini inglesi se tecnici, ma l'output strutturato deve essere pensato per un utente ITALIANO.
 - CRITICAL: Anchor the query to the specific domain context (Course Description).
 
 GOAL: Find a video that covers the *general topic* of the step or shows a clear *demonstration* of the result.
@@ -242,13 +242,15 @@ export const USER_RESOURCE_QUERY_PROMPT = ({
   courseDescription,
   phaseTitle,
   stepTitle,
-  stepDescription
+  stepDescription,
+  languageHint,
 }: {
   courseTitle: string
   courseDescription: string
   phaseTitle: string
   stepTitle: string
   stepDescription: string
+  languageHint?: string
 }) => `
 CONTEXT:
 Course: ${courseTitle}
@@ -256,6 +258,7 @@ Course Context: ${courseDescription}
 Phase: ${phaseTitle}
 Step: ${stepTitle}
 Step Description: ${stepDescription}
+${languageHint ? `\nLANGUAGE PREFERENCE: Generate the query primarily in ${languageHint}. This ensures results in the user's preferred language(s).` : ''}
 
 TASK:
 Generate the most relevant YouTube search query for this step, keeping it within the course and phase context.
@@ -323,7 +326,7 @@ RULES:
 - Return JSON with fields "is_complete" and "reasoning"
 - Set is_complete to TRUE only if ALL key concepts in the phase description are covered by existing steps
 - Be strict: if there are obvious gaps in coverage, return FALSE
-- **LANGUAGE**: Detect the language of the provided context and respond in that same language.
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
 
 Schema:
 {
@@ -382,7 +385,7 @@ RULES:
 - Analyze \`existingSteps\` and \`phaseDescription\`.
 - If \`existingSteps\` already cover the core of \`phaseDescription\`, return "PHASE_COMPLETED" as intent.
 - Otherwise, identify the next *distinct* topic.
-- **LANGUAGE**: Detect the language of the context and respond EXCLUSIVELY in that language.
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
 
 Schema:
 {
@@ -443,7 +446,7 @@ RULES:
 - If the video covers multiple topics, FOCUS ONLY on the part that matches the "intent" and is NOT already covered by existing steps.
 - If the video covers things already in previous steps, ignore them in the description.
 - Keep it concise and focused
-- **LANGUAGE**: Detect the language of the provided context and respond EXCLUSIVELY in that same language.
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
 
 Schema:
 {
@@ -496,7 +499,7 @@ Your task is to analyze a "Step Intent" and decide if it is best served by a:
 
 RULES:
 - Return valid JSON with "selected_type" ("video" or "webpage") and "reason".
-- **LANGUAGE**: Detect the language of the provided context and respond locally if needed (but the JSON keys must remain English).
+- **LINGUA**: Rispondi ESCLUSIVAMENTE in lingua ITALIANA (i tasti del JSON restano in inglese).
 
 Schema:
 {
@@ -530,15 +533,17 @@ RULES:
 - The milestone must be a practical challenge based strictly on taught content.
 - It must require applying ONLY the knowledge from the provided steps.
 - The description must be clear, motivating, and provide specific instructions on what to achieve.
-- Detect the language of the phase/steps and respond EXCLUSIVELY in that same language.
+- Rispondi ESCLUSIVAMENTE in lingua ITALIANA. La Milestone deve essere comprensibile per un utente italiano.
 - The search_query MUST be designed to find a demonstration, performance, or real-world example of the challenge (e.g., "A Major chord execution", "Web landing page showcase"). NO tutorials.
 - Return valid JSON matching this schema:
 {
   "title": string,
   "description": string,
   "milestone_type": "target_metric" | "media_upload" | "external_link" | "text_submission",
-  "search_query": "string - optimized query to find a DEMONSTRATION or PERFORMANCE of this specific challenge (NOT a tutorial, but an example of the result)",
-  "summary": "string - 1-2 sentences explaining what the user should notice in this demonstration"
+  "requires_resource": boolean, // Set to true if a support resource (demo, sheet music, reference) is beneficial
+  "recommended_resource_type": "video" | "webpage", // Choose the best format for the support material
+  "search_query": "string - optimized query to find a DEMONSTRATION, PERFORMANCE or GOAL REFERENCE (e.g. 'song title sheet music', 'perfect deadlift form'). NOT a tutorial.",
+  "summary": "string - 1-2 sentences explaining what the user should notice or use in this resource"
 }
 `;
 
@@ -635,7 +640,7 @@ CONSTRAINTS:
 - At least 3 themes must be "essential" priority
 - Themes must be ordered in logical learning progression (prerequisites first!)
 - No conceptual overlap between themes
-- Queries must match the course language (Italian/English/etc.)
+- Tutte le query e i nomi dei temi devono essere in lingua ITALIANA (o ottimizzati per il mercato italiano).
 
 OUTPUT FORMAT (JSON only, no additional text):
 {
@@ -694,6 +699,7 @@ CRITICAL REQUIREMENTS:
 1. NO OVERLAP: Each resource must cover DISTINCT content
    - If 2 resources cover the same concept, choose only the better one
    - Example: Don't use both "plating techniques" and "professional plating" videos
+   - **URL CHECK**: If two resources share the same URL they are THE SAME resource. Select it only ONCE.
    
 2. LOGICAL PROGRESSION: Order resources from basic to advanced
    - Foundational concepts first
@@ -791,9 +797,11 @@ export const USER_CURRICULUM_ASSEMBLY_PROMPT = (params: {
         ? `Views: ${r.metrics.views || 'N/A'}, Likes: ${r.metrics.likes || 'N/A'}, Duration: ${r.metrics.duration || 'N/A'}s`
         : 'Metrics: N/A'
       
+      // FIX 2: include URL so the AI can self-detect duplicate resources (same URL = same resource)
       return `[${idx + 1}] ID: ${r.id}
    Theme: ${r.theme_id}
    Type: ${r.type}
+   URL: ${r.url}
    Title: ${r.title}
    Description: ${r.description.substring(0, 200)}${r.description.length > 200 ? '...' : ''}
    ${metrics}`
@@ -860,7 +868,7 @@ MACRO-PHASE CALIBRATION:
 CONSTRAINTS:
 - Maximum 5 prerequisite gaps
 - Each gap must be concrete and searchable (not vague like "basic knowledge")
-- Language: Match the language of the phase title/keywords
+- Lingua: TUTTI i testi generati devono essere in ITALIANO.
 - If the phase is clearly self-contained and needs no prerequisites, set can_proceed_directly to true
 
 OUTPUT FORMAT (JSON only):
@@ -937,7 +945,7 @@ RULES:
 - Only flag REAL violations (don't be overly strict about "important" gaps)
 - For each violation, suggest exactly WHERE to insert a remedial step and WHAT to search for
 - If all critical gaps are covered, set is_safe to true
-- Language: Match the language of the steps
+- Lingua: Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
 
 OUTPUT FORMAT (JSON only):
 {
@@ -1004,7 +1012,7 @@ CRITICAL RULES:
 3. Each question should synthesize 2-3 keywords from the macro-phase into a single clear scenario
 4. Questions MUST be answerable with a simple "Yes, I can do this" or "No, I need to learn this"
 5. Progressive difficulty: question for macro-phase 1 should be basic, question for macro-phase 6 should be advanced
-6. Language: MATCH the language of the course title. If course is in Italian, questions in Italian. If English, questions in English.
+6. Lingua: Tutte le domande devono essere ESCLUSIVAMENTE in lingua ITALIANA.
 7. Questions should be concise (1-2 sentences max)
 
 OUTPUT FORMAT (JSON only, no additional text):
@@ -1047,3 +1055,173 @@ The user will answer these questions to determine their starting level in the co
 
 Return ONLY valid JSON.`;
 }
+
+// -------------------------------------------------------
+// UNIVERSAL RESOURCE CATEGORIZER (3-Level Tagging)
+// -------------------------------------------------------
+export const UNIVERSAL_RESOURCE_CATEGORIZER = `You are an expert educational resource categorization system. Your task is to analyze educational content (videos, articles, tutorials) and extract structured metadata using universal rules that work across ALL disciplines.
+
+# CATEGORIZATION RULES
+
+## LEVEL 1: DOMAIN & SUBDOMAIN
+
+### Domain Identification
+The **domain** is the macro-category (1-2 words, singular noun, snake_case).
+
+**Decision Logic:**
+- IF about musical instrument → domain: instrument_name (guitar, piano, drums, violin)
+- IF about visual arts → domain: art_type (painting, sculpture, photography, digital_art)
+- IF about sports/physical activity → domain: sport_name (skating, yoga, climbing, swimming)
+- IF about business/marketing → domain: specialization (google_ads, seo, copywriting, email_marketing)
+- IF about finance/investing → domain: finance_type (stock_trading, crypto_investing, real_estate)
+- IF about programming → domain: language_or_framework (react, python, rust, django)
+- IF about cooking → domain: cooking_type (baking, pastry, italian_cooking)
+- IF about crafts/trades → domain: craft_name (woodworking, gardening, beekeeping, pottery)
+- IF about sciences → domain: science_field (quantum_physics, organic_chemistry, astronomy)
+- IF uncategorizable → domain: descriptive_term (public_speaking, time_management)
+
+**Critical Rule:** The domain MUST be reusable for similar resources.
+**Test:** "Would other resources on this topic have the same domain?"
+
+### Subdomain (Optional)
+More specific categorization within domain.
+**Examples:**
+- domain: guitar, subdomain: acoustic_guitar
+- domain: painting, subdomain: oil_painting
+- domain: cooking, subdomain: sourdough_baking
+
+## LEVEL 2: PRIMARY TOPICS (max 5)
+
+Each topic has a **type** and a **normalized term**.
+
+### Topic Types
+
+**SKILL** - Practical ability
+- Format: action_noun or skill_name
+- Examples: finger_positioning, brush_control, keyword_research, dough_kneading
+
+**CONCEPT** - Theoretical/abstract knowledge
+- Format: concept_name
+- Examples: chord_progression, color_harmony, market_volatility, gluten_development
+
+**TOOL** - Instrument, material, software, equipment
+- Format: tool_name
+- Examples: keyword_planner, acrylic_paint, stand_mixer, photoshop
+
+**TECHNIQUE** - Specific method or approach
+- Format: technique_name or style_technique
+- Examples: strumming_downstroke, wet_on_wet_blending, exact_match_targeting, autolyse_method
+
+**ENTITY** - Named specific thing (chord, color, strategy, recipe)
+- Format: type_name
+- Examples: chord_a_major, color_prussian_blue, strategy_scalping, bread_sourdough
+
+### Normalization Rules
+
+**MANDATORY transformations:**
+1. **Lowercase:** "Accordo La" → "chord_a"
+2. **Snake_case:** "color theory" → "color_theory"
+3. **Remove articles:** "the plectrum" → "plectrum"
+4. **English base terms** (unless domain is language-specific like italian_cooking)
+   - "pennello" → "brush"
+   - "accordo" → "chord"
+   - **Exception:** Italian cooking terms ok: "risotto_mantecatura"
+5. **Common abbreviations allowed:** "seo" (not "search_engine_optimization")
+6. **No spaces, no special chars:** only a-z, 0-9, _
+
+### Selection Guidelines
+
+**Ask yourself:**
+- "What are the 3-5 CORE topics this resource teaches?"
+- "If someone searches for these topics, should they find this resource?"
+- "Are these topics specific enough to be useful for matching?"
+
+**Avoid:**
+- ❌ Vague terms: "basics", "introduction", "tutorial"
+- ❌ Redundancy: Don't include both "guitar" and "acoustic_guitar" if domain already guitar
+- ✅ Specific: "chord_a_major" not just "chords"
+
+## LEVEL 3: CONTEXTUAL METADATA
+
+### Skill Level
+**Required.** Analyze content complexity:
+- beginner: Contains phrases like "for beginners", "first steps", "basics", "introduction", explains fundamental concepts
+- intermediate: No explicit level indicator, assumes some prior knowledge, builds on basics
+- advanced: Contains "advanced", "master", "professional", uses technical jargon without explanation
+
+**Default if unclear:** beginner
+
+### Learning Objectives (max 3)
+**What the user will be able to DO after consuming this resource.**
+**Format:** Action verb + specific outcome
+**Language:** ALWAYS in ITALIAN.
+**Not:** Vague outcomes like "understand chords" → Specific: "Suonare 3 accordi maggiori fluentemente"
+
+### Prerequisites (max 3)
+**What knowledge/skills are ASSUMED but not taught in this resource.**
+**Format:** Competency statement, ALWAYS in ITALIAN.
+**If truly beginner (no prerequisites):** Return empty array []
+
+### Language
+Detect primary language of the resource content:
+- it: Italian
+- en: English
+- es: Spanish
+- fr: French
+- de: German
+- other: Any other language
+
+**Decision:** Based on title + description text. If mixed, choose predominant one.
+
+## OUTPUT FORMAT
+
+Return ONLY valid JSON, no markdown, no explanation:
+
+{
+  "domain": "string (1-2 words, snake_case)",
+  "subdomain": "string or null",
+  "primary_topics": [
+    {
+      "type": "skill|concept|tool|technique|entity",
+      "term": "normalized_snake_case_term",
+      "original": "original text from resource"
+    }
+  ],
+  "skill_level": "beginner|intermediate|advanced",
+  "learning_objectives": ["string in Italian"],
+  "prerequisites": ["string in Italian"],
+  "language": "it|en|es|fr|de|other",
+  "searchable_text": "concatenated: title + summary + all topic terms"
+}
+
+## VALIDATION RULES
+
+Before returning JSON, self-check:
+1. domain is 1-2 words, snake_case, reusable for similar content?
+2. primary_topics has 1-5 items (not 0, not 6+)?
+3. Each topic has valid type (skill|concept|tool|technique|entity)?
+4. Each term is normalized (lowercase, snake_case, no spaces)?
+5. skill_level is one of: beginner, intermediate, advanced?
+6. learning_objectives use action verbs (not vague "understand")?
+7. prerequisites are competencies, not resources?
+8. language is detected correctly from text?
+9. searchable_text concatenates title + summary + all terms?
+10. JSON is valid (no trailing commas, proper quotes)?
+
+If any check fails, fix before outputting.
+
+## ERROR HANDLING
+
+If resource content is unclear or insufficient, use minimal categorization:
+{
+  "domain": "other",
+  "subdomain": null,
+  "primary_topics": [{"type": "concept", "term": "general_tutorial", "original": "tutorial"}],
+  "skill_level": "beginner",
+  "learning_objectives": [],
+  "prerequisites": [],
+  "language": "it",
+  "searchable_text": "title summary"
+}
+
+Do NOT hallucinate topics. If truly unclear, use minimal generic categorization.`;

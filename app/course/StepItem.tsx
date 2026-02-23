@@ -34,6 +34,7 @@ type Resource = {
   thumbnail_url?: string | null
   avg_rating?: number
   summary?: string | null
+  created_at?: string
 }
 
 type SkipReason = 'already_know' | 'too_hard' | 'too_easy' | 'not_relevant' | 'bad_resource' | 'not_the_time' | 'other'
@@ -56,6 +57,7 @@ type StepItemProps = {
     completed: boolean
     status?: 'pending' | 'completed' | 'skipped'
     skip_reason?: string | null
+    created_at?: string
     resource: Resource | null
   }
   onUpdateStatus: (id: string, status: 'completed' | 'skipped' | 'pending') => void
@@ -209,8 +211,39 @@ export default function StepItem({
     if (onPrev) animateOutAndProceed(1, onPrev)
   }
 
-  const hasResource = !!step.resource
+  const hasResource = !!step.resource?.url
 
+  // Resource Origin Detection
+  const isResourceGenerato = (() => {
+    try {
+      if (!step.resource?.created_at || !step.created_at) return false
+
+      // Ensure UTC for reliable comparison
+      // If the string doesn't have a timezone offset (Z or +), append Z to force UTC
+      const normalizeUTC = (str: string) => {
+        const clean = str.replace(' ', 'T')
+        if (!clean.includes('Z') && !clean.includes('+')) return clean + 'Z'
+        return clean
+      }
+
+      const resDateStr = normalizeUTC(step.resource.created_at)
+      const stepDateStr = normalizeUTC(step.created_at)
+
+      const resTime = new Date(resDateStr).getTime()
+      const stepTime = new Date(stepDateStr).getTime()
+
+      if (isNaN(resTime) || isNaN(stepTime)) return false
+
+      const diffMs = Math.abs(stepTime - resTime)
+      const isGen = diffMs < 5 * 60 * 1000
+
+      return isGen
+    } catch (e: any) {
+      return false
+    }
+  })()
+
+  // --- Handlers ---
   const isYoutubeResource = (res: Resource | null) => {
     if (!res) return false;
     return res.type === 'youtube' || res.url.includes('youtube.com') || res.url.includes('youtu.be');
@@ -243,11 +276,20 @@ export default function StepItem({
 
   const progressColor = remainingProgress > 0.5 ? '#22C55E' : (remainingProgress > 0.2 ? '#EAB308' : '#EF4444')
 
+  const handleProceedNext = () => {
+    if (onNext) {
+      handleNextSwipe()
+    } else {
+      onClose?.()
+    }
+  }
+
   const handleCompletePress = () => {
     if (hasResource && step.resource?.id) {
       setShowRatingPopup(true)
     } else {
       onUpdateStatus(step.id, 'completed')
+      handleProceedNext()
     }
   }
 
@@ -267,6 +309,7 @@ export default function StepItem({
       setIsSubmittingRating(false)
       setShowRatingPopup(false)
       onUpdateStatus(step.id, 'completed')
+      handleProceedNext()
     }
   }
 
@@ -294,6 +337,7 @@ export default function StepItem({
     } finally {
       setIsSubmittingSkip(false)
       onUpdateStatus(step.id, 'skipped')
+      handleProceedNext()
     }
   }
 
@@ -314,6 +358,7 @@ export default function StepItem({
       setIsOtherSelected(false)
       setSkipOtherText('')
       onUpdateStatus(step.id, 'skipped')
+      handleProceedNext()
     }
   }
 
@@ -381,7 +426,8 @@ export default function StepItem({
                 )}
 
                 <LinearGradient
-                  colors={['transparent', 'rgba(255,255,255,0.8)', colors.background]}
+                  colors={['transparent', 'rgba(255,255,255,0.5)', colors.background]}
+                  locations={[0, 0.5, 1]}
                   style={styles.heroGradient}
                 />
               </View>
@@ -413,22 +459,7 @@ export default function StepItem({
                   )}
                 </View>
 
-                {/* Navigation Swipe Hint Area - MINIMAL & GESTURE DRIVEN */}
-                <View style={styles.swipeHintRow}>
-                  {onPrev && (
-                    <View style={styles.minimalNavHint}>
-                      <Text style={styles.minimalNavLabel}>SWIPE</Text>
-                      <Ionicons name={icons.back} size={14} color="#CBD5E1" />
-                    </View>
-                  )}
-                  {(onPrev && onNext) && <View style={{ width: 12 }} />}
-                  {onNext && (
-                    <View style={styles.minimalNavHint}>
-                      <Ionicons name={icons.forward} size={14} color="#CBD5E1" />
-                      <Text style={styles.minimalNavLabel}>SWIPE</Text>
-                    </View>
-                  )}
-                </View>
+
 
                 <Text
                   style={styles.mainTitle}
@@ -446,18 +477,18 @@ export default function StepItem({
                       </Text>
                     </View>
 
-                    {/* Duration/Reading Time Badge */}
-                    <View style={styles.metaBadge}>
+                    {/* Origin Badge */}
+                    <View style={[
+                      styles.metaBadge,
+                      { backgroundColor: isResourceGenerato ? '#DCFCE7' : '#F1F5F9' }
+                    ]}>
                       <Ionicons
-                        name={isYoutubeResource(step.resource) ? 'time-outline' : 'book-outline'}
+                        name={isResourceGenerato ? 'sparkles' : 'save-outline'}
                         size={14}
-                        color="#64748B"
+                        color={isResourceGenerato ? '#166534' : '#475569'}
                       />
-                      <Text style={styles.metaText}>
-                        {isYoutubeResource(step.resource)
-                          ? '10 min' // Placeholder for video duration for now as it's not in DB
-                          : `${Math.max(1, Math.ceil((step.resource.summary?.length || 0) / 1000))} min`
-                        }
+                      <Text style={[styles.metaText, { color: isResourceGenerato ? '#166534' : '#475569' }]}>
+                        {isResourceGenerato ? 'Generato' : 'Dal Database'}
                       </Text>
                     </View>
 
@@ -469,7 +500,7 @@ export default function StepItem({
                         color="#64748B"
                       />
                       <Text style={styles.metaText}>
-                        {isYoutubeResource(step.resource) ? 'Video' : 'Articolo'}
+                        {isYoutubeResource(step.resource) ? 'YouTube' : 'Web'}
                       </Text>
                     </View>
                   </View>
@@ -485,7 +516,11 @@ export default function StepItem({
                     })}
                     style={[
                       componentStyles.mainActionBtn,
-                      { backgroundColor: isYoutubeResource(step.resource) ? '#FF0000' : palette.black }
+                      {
+                        backgroundColor: isYoutubeResource(step.resource) ? '#FF0000' : palette.black,
+                        marginBottom: spacing.lg,
+                        width: '100%'
+                      }
                     ]}
                   >
                     <Ionicons
@@ -495,7 +530,7 @@ export default function StepItem({
                       style={{ marginRight: 10 }}
                     />
                     <Text style={styles.mainActionBtnText}>
-                      {isYoutubeResource(step.resource) ? 'Guarda il Video' : 'Leggi l\'Articolo'}
+                      {isYoutubeResource(step.resource) ? 'Guarda su YouTube' : 'Leggi sul Web'}
                     </Text>
                   </Pressable>
                 )}
@@ -537,6 +572,7 @@ export default function StepItem({
               </View>
             </Animated.View>
           </ScrollView>
+
 
           {/* HOVERING FOOTER */}
           <View style={styles.footerWrapper} pointerEvents="box-none">
@@ -616,7 +652,7 @@ export default function StepItem({
                   ))}
                 </View>
 
-                <Pressable onPress={() => { setShowRatingPopup(false); onUpdateStatus(step.id, 'completed'); }} style={{ marginTop: 20 }}>
+                <Pressable onPress={() => { setShowRatingPopup(false); onUpdateStatus(step.id, 'completed'); handleProceedNext(); }} style={{ marginTop: 20 }}>
                   <Text style={{ color: palette.gray, fontSize: 14 }}>Salta valutazione</Text>
                 </Pressable>
               </View>
@@ -698,7 +734,7 @@ export default function StepItem({
           </Modal>
         </View>
       </GestureDetector>
-    </GestureHandlerRootView>
+    </GestureHandlerRootView >
   )
 }
 
@@ -730,7 +766,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 120, // Taller gradient for smoother transition
+    height: 250, // Much taller to transition behind elements
   },
   topControls: {
     position: 'absolute',
@@ -756,38 +792,17 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: palette.black,
   },
-  swipeHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    gap: 4,
-  },
-  minimalNavHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  minimalNavLabel: {
-    fontSize: 7,
-    fontWeight: '600',
-    color: '#CBD5E1',
-    letterSpacing: 0.3,
-  },
-  minimalNavArrow: {
-    fontSize: 9,
-    color: '#CBD5E1',
-    fontWeight: '800',
-  },
+
   content: {
     paddingHorizontal: spacing.xl,
-    marginTop: -20, // Pull content over the hero area a bit
+    marginTop: -80, // Pull content significantly over the hero area and its gradient
     zIndex: 10,
+    alignItems: 'center',
   },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   mainTitle: {
     ...typography.title,
@@ -795,13 +810,14 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     color: palette.black,
     fontWeight: '900',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
   },
   resourceMetaRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   metaBadge: {
     flexDirection: 'row',
@@ -831,18 +847,20 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   descriptionBox: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
   },
   descriptionText: {
     ...typography.body,
     fontSize: 17,
     lineHeight: 26,
     color: '#334155',
+    textAlign: 'center',
   },
   divider: {
     height: 1,
     backgroundColor: '#E2E8F0',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   infoGrid: {
     gap: spacing.lg,
@@ -892,6 +910,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 180,
     justifyContent: 'flex-end',
+    zIndex: 20,
   },
   footerGradient: {
     position: 'absolute',

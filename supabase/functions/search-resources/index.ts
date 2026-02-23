@@ -19,10 +19,33 @@ serve(async (req) => {
       step_description,
       course_title,
       course_description,
-      phase_title
+      phase_title,
+      primaryLanguage,
+      secondaryLanguages,
     } = await req.json()
     
     console.log(`[TARGET] Searching resource for: ${step_title}`)
+    console.log(`[LANG] Primary: ${primaryLanguage}, Secondary: ${JSON.stringify(secondaryLanguages)}`)
+
+    // Language strategy:
+    // - Primary: 'it' (Italian) — always the system base language
+    // - Secondary: ['en'] minimum — English is always the mandatory fallback
+    const LANG_NAMES: Record<string, string> = {
+      it: 'italiano', en: 'english', es: 'español', fr: 'français', de: 'deutsch', pt: 'português'
+    }
+    const primaryLang = primaryLanguage || 'it'
+    let secondaryLangs: string[] = secondaryLanguages || ['en']
+    // Always ensure English is in the secondary list as fallback
+    if (!secondaryLangs.includes('en')) {
+      secondaryLangs = ['en', ...secondaryLangs]
+    }
+    const primaryLangName = LANG_NAMES[primaryLang] || 'italiano'
+    const secondaryLangNames = secondaryLangs
+      .filter((l: string) => l !== primaryLang)
+      .map((l: string) => LANG_NAMES[l] || l)
+    const langHint = secondaryLangNames.length > 0
+      ? `${primaryLangName} OR ${secondaryLangNames.join(' OR ')}`
+      : primaryLangName
 
     if (!step_title) {
       throw new Error("Missing step_title")
@@ -53,12 +76,13 @@ serve(async (req) => {
                   courseDescription: course_description || "",
                   phaseTitle: phase_title || "Basi",
                   stepTitle: step_title,
-                  stepDescription: step_description || ""
+                  stepDescription: step_description || "",
+                  languageHint: langHint,
                 }) 
               },
             ],
             temperature: 0.1,
-            max_tokens: 50
+            max_tokens: 60
           }),
         })
 
@@ -75,7 +99,9 @@ serve(async (req) => {
     }
 
     /* ========== 2) YouTube Search ========== */
-    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=medium&maxResults=5&q=${encodeURIComponent(refinedQuery)}&key=${YT_KEY}`
+    // Append language suffix to broaden results to all accepted languages
+    const queryWithLang = `${refinedQuery} ${langHint}`
+    const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=medium&maxResults=5&q=${encodeURIComponent(queryWithLang)}&key=${YT_KEY}`
 
     const ytRes = await fetch(ytUrl)
     const ytData = await ytRes.json()

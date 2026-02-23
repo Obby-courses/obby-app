@@ -25,7 +25,7 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
 export default function NewCourseAIScreen() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const router = useRouter()
   const [courseInput, setCourseInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -33,6 +33,10 @@ export default function NewCourseAIScreen() {
   const [error, setError] = useState<string | null>(null)
   const [stepsPerWeek, setStepsPerWeek] = useState(3)
   const [searchMode, setSearchMode] = useState<SearchMode>('mixed')
+
+  // Language prefs from user profile
+  const primaryLanguage = profile?.primary_language || 'it'
+  const secondaryLanguages = profile?.secondary_languages || ['en']
 
   // Skill Assessment state
   const [assessmentQuestions, setAssessmentQuestions] = useState<AssessmentQuestion[]>([])
@@ -55,7 +59,7 @@ export default function NewCourseAIScreen() {
     setError(null)
 
     try {
-      console.log('--- 🚀 START GENERATION ---')
+
 
       /* =======================================================
           STEP 1 — MACRO PHASES + COURSE CREATION
@@ -74,11 +78,18 @@ export default function NewCourseAIScreen() {
         }),
       })
 
-      const macroData = await macroRes.json()
+      const macroText = await macroRes.text()
+      let macroData: any
+      try {
+        macroData = JSON.parse(macroText)
+      } catch (e) {
+        console.error('❌ Failed to parse Step 1 JSON. Raw response:', macroText)
+        throw new Error(`Server returned HTML instead of JSON (Step 1). Status: ${macroRes.status}`)
+      }
+
       if (!macroRes.ok || !macroData.success) throw new Error(macroData.error || 'Errore Step 1')
 
       const courseId = macroData.courseId
-      console.log('✅ STEP 1 OK. Course ID:', courseId)
 
       // AGGIORNA IL CORSO DIRETTAMENTE (senza toccare il backend)
       const daysPerStep = parseFloat((7 / stepsPerWeek).toFixed(2))
@@ -134,7 +145,7 @@ export default function NewCourseAIScreen() {
         })
 
         const quizData = await quizRes.json()
-        console.log('🧠 Quiz data:', JSON.stringify(quizData))
+
 
         if (quizData.success && quizData.questions?.length > 0) {
           // Show assessment modal and wait for user response
@@ -147,7 +158,6 @@ export default function NewCourseAIScreen() {
           })
 
           setShowAssessment(false)
-          console.log('✅ Assessment complete. Starting from macro-phase index:', startIndex)
         } else {
           console.warn('⚠️ Quiz generation failed, starting from beginning')
         }
@@ -218,7 +228,9 @@ export default function NewCourseAIScreen() {
           phaseDescription: targetPhase.description,
           courseTitle: courseData.title,
           courseDescription: courseData.description,
-          searchMode, // Passa la modalità scelta
+          searchMode,
+          primaryLanguage,
+          secondaryLanguages,
           priorKnowledge: mPhases.slice(0, startIndex).map(mp => ({
             title: mp.title,
             description: mp.description,
@@ -229,12 +241,12 @@ export default function NewCourseAIScreen() {
 
       const stepsData = await stepsRes.json()
       if (!stepsRes.ok || !stepsData.success) throw new Error(stepsData.error || 'Errore Step 3')
-      console.log('✅ Step creati con successo')
+
 
       /* =======================================================
           STEP 4 — RESOURCES (Markdown e Link)
          ======================================================= */
-      console.log('🔍 Generazione risorse in corso...')
+
       // Nota: qui potresti voler aggiungere uno stato di loading specifico se lo desideri
 
       const resourceRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
@@ -245,16 +257,18 @@ export default function NewCourseAIScreen() {
         },
         body: JSON.stringify({
           phaseId: targetPhase.id,
+          primaryLanguage,
+          secondaryLanguages,
         }),
       })
 
       const resourceData = await resourceRes.json()
-      console.log('📦 Risorse generate:', resourceData)
+
 
       /* =======================================================
           FINE — NAVIGAZIONE
          ======================================================= */
-      console.log('🎉 PROCESSO COMPLETATO')
+
       router.push(`/course/${courseId}`)
 
     } catch (err: any) {

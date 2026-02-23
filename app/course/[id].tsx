@@ -2,10 +2,11 @@ import { supabase } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
 import { Ionicons } from '@expo/vector-icons'
 import {
+  useFocusEffect,
   useLocalSearchParams,
-  useRouter,
+  useRouter
 } from 'expo-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Dimensions,
@@ -38,14 +39,16 @@ export default function CourseScreen() {
   const flatListRef = useRef<FlatList>(null)
   const titleOpacity = useSharedValue(1)
 
-  useEffect(() => {
-    loadAllCourses()
-  }, [])
+  useFocusEffect(
+    useCallback(() => {
+      loadAllCourses(true)
+    }, [currentIndex])
+  )
 
-  async function loadAllCourses() {
+  async function loadAllCourses(isRefresh = false) {
     const { data } = await supabase
       .from('courses')
-      .select('id, title')
+      .select('id, title, color_index')
       .order('created_at', { ascending: false })
 
     if (data) {
@@ -60,9 +63,11 @@ export default function CourseScreen() {
       setCurrentIndex(startIdx)
       setDisplayTitle(data[startIdx]?.title || '')
 
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({ index: startIdx, animated: false })
-      }, 0)
+      if (!isRefresh) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({ index: startIdx, animated: false })
+        }, 0)
+      }
     }
     setLoading(false)
   }
@@ -93,6 +98,76 @@ export default function CourseScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    )
+  }
+
+  if (courses.length === 0) {
+    return (
+      <View style={{
+        flex: 1,
+        backgroundColor: colors.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 40
+      }}>
+        <View style={{
+          width: 100,
+          height: 100,
+          borderRadius: 50,
+          backgroundColor: '#f1f5f9',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: 24
+        }}>
+          <Ionicons name="school-outline" size={50} color="#94a3b8" />
+        </View>
+
+        <Text style={{
+          fontSize: 24,
+          fontWeight: '900',
+          color: colors.primary,
+          textAlign: 'center',
+          marginBottom: 12
+        }}>
+          Nessun corso trovato
+        </Text>
+
+        <Text style={{
+          fontSize: 16,
+          color: '#64748b',
+          textAlign: 'center',
+          marginBottom: 32,
+          lineHeight: 24
+        }}>
+          Non hai ancora dei corsi attivi. Creane uno nuovo per iniziare il tuo percorso di apprendimento.
+        </Text>
+
+        <Pressable
+          onPress={() => router.push('/new-course')}
+          style={{
+            backgroundColor: colors.primary,
+            paddingVertical: 16,
+            paddingHorizontal: 32,
+            borderRadius: 16,
+            width: '100%',
+            alignItems: 'center',
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 10,
+            elevation: 5
+          }}
+        >
+          <Text style={{ color: colors.background, fontSize: 18, fontWeight: '700' }}>Crea Nuovo Corso</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.replace('/')}
+          style={{ marginTop: 24 }}
+        >
+          <Text style={{ color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>Torna alla Home</Text>
+        </Pressable>
       </View>
     )
   }
@@ -131,7 +206,21 @@ export default function CourseScreen() {
             {displayTitle}
           </Text>
         </Animated.View>
-        <View style={{ width: 44 }} />
+        <Pressable
+          onPress={() => router.push({
+            pathname: '/course/[id]/settings',
+            params: { id: courses[currentIndex]?.id }
+          })}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons name="ellipsis-vertical" size={24} color={colors.primary} />
+        </Pressable>
       </View>
 
       <FlatList
@@ -148,8 +237,12 @@ export default function CourseScreen() {
           offset: width * index,
           index,
         })}
-        renderItem={({ item }) => (
-          <CourseViewer courseId={item.id} hideHeader />
+        renderItem={({ item, index }) => (
+          <CourseViewer
+            courseId={item.id}
+            hideHeader
+            isActive={index === currentIndex}
+          />
         )}
         removeClippedSubviews={true}
         initialNumToRender={1}

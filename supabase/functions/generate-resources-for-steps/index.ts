@@ -32,7 +32,14 @@ const corsHeaders = {
 /* ======================================================
    🔁 CALL CHILD FUNCTION: search-resources
    ====================================================== */
-async function callSearchResources(step: any, courseTitle: string, courseDescription: string, phaseTitle: string) {
+async function callSearchResources(
+  step: any,
+  courseTitle: string,
+  courseDescription: string,
+  phaseTitle: string,
+  primaryLanguage: string,
+  secondaryLanguages: string[]
+) {
   console.log(`[PIPELINE] Calling search-resources for: ${step.title}`)
 
   try {
@@ -53,6 +60,8 @@ async function callSearchResources(step: any, courseTitle: string, courseDescrip
           course_title: courseTitle,
           course_description: courseDescription,
           phase_title: phaseTitle,
+          primaryLanguage,
+          secondaryLanguages,
         }),
       }
     )
@@ -89,7 +98,7 @@ serve(async (req: Request) => {
   console.log("[VERSION] 2026-01-25 13:39 - AUTH PIPELINE & LOOP VERIFIED")
 
   try {
-    const { phaseId } = await req.json()
+    const { phaseId, primaryLanguage: bodyPrimaryLang, secondaryLanguages: bodySecondaryLangs } = await req.json()
 
     if (!phaseId) {
       return new Response(
@@ -121,6 +130,44 @@ serve(async (req: Request) => {
       throw courseError || new Error("Course not found")
     }
 
+    // Language strategy:
+    // - Primary: 'it' (Italian) — always the system default
+    // - Secondary: ['en'] minimum — English is always the mandatory fallback
+    // These defaults are enforced here; request body can still override for future flexibility.
+    let primaryLanguage = bodyPrimaryLang || 'it'
+    let secondaryLanguages: string[] = bodySecondaryLangs || ['en']
+
+    // Ensure 'en' is always present as fallback
+    if (!secondaryLanguages.includes('en')) {
+      secondaryLanguages = ['en', ...secondaryLanguages]
+    }
+
+    // Try to load from the course owner's profile if not provided
+    if (!bodyPrimaryLang) {
+      try {
+        const { data: courseRow } = await supabase
+          .from('courses')
+          .select('user_id')
+          .eq('id', course.course_id || phase.course_id)
+          .single()
+        if (courseRow?.user_id) {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('primary_language, secondary_languages')
+            .eq('id', courseRow.user_id)
+            .single()
+          if (profileRow) {
+            primaryLanguage = profileRow.primary_language || 'it'
+            secondaryLanguages = profileRow.secondary_languages || ['en']
+          }
+        }
+      } catch (e) {
+        console.warn('[LANG] Could not fetch user profile language, using defaults')
+      }
+    }
+
+    console.log(`[LANG] primary=${primaryLanguage}, secondary=${JSON.stringify(secondaryLanguages)}`)
+
     /* ======================================================
        📥 LOAD STEPS
        ====================================================== */
@@ -144,7 +191,14 @@ serve(async (req: Request) => {
        🔁 LOOP STEPS → RESOURCES
        ====================================================== */
     for (const step of steps) {
-      const success = await callSearchResources(step, course.title, course.description, phase.title)
+      const success = await callSearchResources(
+        step,
+        course.title,
+        course.description,
+        phase.title,
+        primaryLanguage,
+        secondaryLanguages
+      )
 
       if (success) {
         totalCreated++

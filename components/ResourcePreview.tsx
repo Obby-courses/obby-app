@@ -104,8 +104,10 @@ export default function ResourcePreview({ resourceId, type, url, onClose, visibl
             startTimeRef.current = Date.now()
             setMaxScrollPercentage(0)
             setWebCharCount(0)
+            setPlaying(true) // Force playing state on
         } else {
             handleCloseAndTrack()
+            setPlaying(false) // Stop playing when hidden
         }
     }, [visible])
 
@@ -126,7 +128,7 @@ export default function ResourcePreview({ resourceId, type, url, onClose, visibl
             percentage = maxScrollPercentage;
         }
 
-        console.log(`[ANALYTICS] Resource ${resourceId}: ${timeSpentSeconds.toFixed(1)}s (Scroll: ${maxScrollPercentage.toFixed(0)}%, Final: ${percentage.toFixed(1)}%)`);
+
 
         const { error } = await supabase.rpc('increment_resource_view', {
             resource_id: resourceId,
@@ -189,6 +191,7 @@ export default function ResourcePreview({ resourceId, type, url, onClose, visibl
                     <View style={styles.playerWrapper}>
                         {videoId ? (
                             <YoutubePlayer
+                                key={videoId}
                                 ref={playerRef}
                                 height={playerHeight}
                                 width={SCREEN_WIDTH}
@@ -196,12 +199,20 @@ export default function ResourcePreview({ resourceId, type, url, onClose, visibl
                                 videoId={videoId}
                                 onChangeState={onStateChange}
                                 onReady={() => {
-                                    // Try to get duration
                                     playerRef.current?.getDuration().then(d => setDuration(d));
                                 }}
                                 initialPlayerParams={{
                                     rel: false,
                                     modestbranding: true,
+                                    playsinline: 1,
+                                    controls: 1,
+                                    autoplay: 1,
+                                    mute: 1,
+                                }}
+                                webViewProps={{
+                                    allowsInlineMediaPlayback: true,
+                                    mediaPlaybackRequiresUserAction: false,
+                                    javascriptEnabled: true,
                                 }}
                             />
                         ) : (

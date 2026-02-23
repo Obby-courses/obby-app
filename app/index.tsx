@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -50,6 +49,8 @@ type Course = {
   description: string
   created_at: string
   days_per_step: number | null
+  color_index?: number | null
+  deadlines_enabled?: boolean
   phases: Phase[]
 }
 
@@ -86,6 +87,8 @@ export default function Index() {
         description,
         created_at,
         days_per_step,
+        color_index,
+        deadlines_enabled,
         phases (
           id,
           title,
@@ -161,6 +164,8 @@ export default function Index() {
     const map: Record<string, string[]> = {}
 
     courses.forEach((course) => {
+      if (course.deadlines_enabled === false) return
+
       const allSteps: Step[] = []
       const sortedPhases = Array.isArray(course.phases) ? [...course.phases].sort(
         (a, b) => a.order_index - b.order_index
@@ -187,7 +192,7 @@ export default function Index() {
       const firstIncompleteIndex = allSteps.findIndex((s) => !s.completed)
       if (firstIncompleteIndex === -1) return
 
-      const courseColor = getCourseColor(course.id)
+      const courseColor = getCourseColor(course.id, course.color_index)
 
       allSteps.forEach((step, index) => {
         if (!step.completed) {
@@ -215,7 +220,7 @@ export default function Index() {
     const steps = activePhase?.steps || []
     const totalSteps = steps.length
     const completedOrSkipped = steps.filter((s) => s.status === 'completed' || s.status === 'skipped' || (!s.status && s.completed)).length
-    const courseColor = getCourseColor(item.id)
+    const courseColor = getCourseColor(item.id, item.color_index)
 
     return (
       <Pressable
@@ -267,12 +272,15 @@ export default function Index() {
           <Pressable
             onPress={(e) => {
               e.stopPropagation()
-              setCourseToDelete(item)
+              router.push({
+                pathname: '/course/[id]/settings',
+                params: { id: item.id }
+              })
             }}
             hitSlop={15}
             style={styles.deleteIconBtn}
           >
-            <Ionicons name="close" size={18} color={palette.black} style={{ opacity: 0.4 }} />
+            <Ionicons name="ellipsis-vertical" size={20} color={palette.black} style={{ opacity: 0.4 }} />
           </Pressable>
         </View>
       </Pressable>
@@ -349,55 +357,6 @@ export default function Index() {
         bounces={true}
       />
 
-      {/* MODALE DI CONFERMA */}
-      <Modal
-        visible={!!courseToDelete}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => {
-          setCourseToDelete(null)
-          setDeleteError(null)
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {deleteError ? "Errore" : "Elimina?"}
-            </Text>
-
-            <Text style={styles.modalText}>
-              {deleteError
-                ? deleteError
-                : `Eliminare "${courseToDelete?.title}"?`}
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                onPress={() => {
-                  setCourseToDelete(null)
-                  setDeleteError(null)
-                }}
-                disabled={isDeleting}
-              >
-                <Text style={styles.modalBtnTextCancel}>No</Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnDelete]}
-                onPress={confirmDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator color={colors.inverseText} size="small" />
-                ) : (
-                  <Text style={styles.modalBtnTextDelete}>Sì</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Animated.View>
   )
 }

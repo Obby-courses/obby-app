@@ -24,6 +24,27 @@ export default function LoginScreen() {
     const [isRegistering, setIsRegistering] = useState(false)
     const [fullName, setFullName] = useState('')
 
+    // Language preferences (registration only)
+    // 'it' is ALWAYS the primary language (fixed system default)
+    // 'en' is ALWAYS in secondary languages as mandatory fallback
+    const PRIMARY_LANGUAGE = 'it'
+    const MANDATORY_FALLBACK = 'en'
+    const ADDITIONAL_LANGUAGES = [
+        { code: 'es', label: 'Español', flag: '🇪🇸' },
+        { code: 'fr', label: 'Français', flag: '🇫🇷' },
+        { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+        { code: 'pt', label: 'Português', flag: '🇵🇹' },
+    ]
+    // secondaryLanguages always includes 'en' as mandatory fallback
+    const [additionalLanguages, setAdditionalLanguages] = useState<string[]>([])
+    const secondaryLanguages = [MANDATORY_FALLBACK, ...additionalLanguages]
+
+    const toggleAdditional = (code: string) => {
+        setAdditionalLanguages(prev =>
+            prev.includes(code) ? prev.filter(l => l !== code) : [...prev, code]
+        )
+    }
+
     // Fade-in animation on mount
     const fadeAnim = useRef(new Animated.Value(0)).current
     useEffect(() => {
@@ -71,6 +92,8 @@ export default function LoginScreen() {
             options: {
                 data: {
                     full_name: fullName,
+                    primary_language: PRIMARY_LANGUAGE,
+                    secondary_languages: secondaryLanguages,
                 },
             },
         })
@@ -126,6 +149,46 @@ export default function LoginScreen() {
                                     onChangeText={setFullName}
                                     autoCapitalize="words"
                                 />
+                            </View>
+                        )}
+
+                        {isRegistering && (
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>LINGUE RISORSE AGGIUNTIVE</Text>
+                                <Text style={[styles.label, { letterSpacing: 0, fontSize: 12, textTransform: 'none', marginBottom: 8 }]}>
+                                    Italiano (principale) e Inglese (fallback) sono sempre inclusi
+                                </Text>
+                                {/* Fixed language chips: IT primary + EN fallback */}
+                                <View style={styles.langGrid}>
+                                    <View style={[styles.langChip, styles.langChipPinned]}>
+                                        <Text style={styles.langChipTextActive}>🇮🇹 Italiano</Text>
+                                    </View>
+                                    <View style={[styles.langChip, styles.langChipSecondary]}>
+                                        <Text style={styles.langChipTextActive}>🇬🇧 English</Text>
+                                    </View>
+                                </View>
+                                {/* Optional additional languages */}
+                                {ADDITIONAL_LANGUAGES.length > 0 && (
+                                    <Text style={[styles.label, { letterSpacing: 0, fontSize: 12, textTransform: 'none', marginTop: 8, marginBottom: 6 }]}>
+                                        Aggiungi altre lingue (opzionale):
+                                    </Text>
+                                )}
+                                <View style={styles.langGrid}>
+                                    {ADDITIONAL_LANGUAGES.map(lang => {
+                                        const isSelected = additionalLanguages.includes(lang.code)
+                                        return (
+                                            <TouchableOpacity
+                                                key={lang.code}
+                                                onPress={() => toggleAdditional(lang.code)}
+                                                style={[styles.langChip, isSelected && styles.langChipSecondary]}
+                                            >
+                                                <Text style={[styles.langChipText, isSelected && styles.langChipTextActive]}>
+                                                    {lang.flag} {lang.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        )
+                                    })}
+                                </View>
                             </View>
                         )}
 
@@ -279,6 +342,39 @@ const styles = StyleSheet.create({
         color: palette.black,
         fontWeight: '900',
         fontSize: 15,
+    },
+    langGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    langChip: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+    },
+    langChipActive: {
+        backgroundColor: palette.black,
+        borderColor: palette.black,
+    },
+    langChipSecondary: {
+        backgroundColor: '#334155',
+        borderColor: '#334155',
+    },
+    langChipPinned: {
+        backgroundColor: '#1D4ED8',
+        borderColor: '#1D4ED8',
+    },
+    langChipText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: palette.black,
+    },
+    langChipTextActive: {
+        color: palette.white,
     },
 });
 

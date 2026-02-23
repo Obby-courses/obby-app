@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { categorizeResource } from '../categorize-resource.ts'
 import {
     MILESTONE_GENERATOR,
     USER_MILESTONE_PROMPT
@@ -18,12 +19,14 @@ serve(async (req: Request) => {
   try {
     const body = await req.json()
     console.log("[BODY]", JSON.stringify(body))
-    let { 
-      courseId, 
-      phaseId, 
-      phaseTitle, 
+    let {
+      courseId,
+      phaseId,
+      phaseTitle,
       phaseKeywords,
-      orderIndex
+      orderIndex,
+      primaryLanguage: bodyPrimaryLang,
+      secondaryLanguages: bodySecondaryLangs
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -65,6 +68,33 @@ serve(async (req: Request) => {
     const stepsToUse = dbSteps && dbSteps.length > 0 ? dbSteps : (body.steps || [])
     console.log(`Using ${stepsToUse.length} steps for context`)
 
+    // Resolve language prefs: from body or from the course's profile
+    let primaryLanguage = bodyPrimaryLang || 'it'
+    let secondaryLanguages: string[] = bodySecondaryLangs || ['en']
+
+    if (!bodyPrimaryLang) {
+      try {
+        const { data: courseRow } = await supabase
+          .from('courses')
+          .select('user_id')
+          .eq('id', courseId)
+          .single()
+        if (courseRow?.user_id) {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('primary_language, secondary_languages')
+            .eq('id', courseRow.user_id)
+            .single()
+          if (profileRow) {
+            primaryLanguage = profileRow.primary_language || 'it'
+            secondaryLanguages = profileRow.secondary_languages || ['en']
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch language context from profile:", err)
+      }
+    }
+
     console.log("Generate milestone challenge...")
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -99,56 +129,96 @@ serve(async (req: Request) => {
 
     /* ========== Support Resource Search ========== */
     let supportResource = null
-    const searchQuery = milestoneResult.search_query || `${milestoneResult.title} demonstration performance`
-
-    console.log(`[SEARCH] Looking for support resource: "${searchQuery}"`)
     
-    try {
-      // 1. Try Video Search
-      const videoRes = await fetch(`${SUPABASE_URL}/functions/v1/search-resources`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
-        body: JSON.stringify({ 
-          step_title: searchQuery,
-          course_title: phaseTitle, // Using phase as context
-          phase_title: phaseTitle 
-        }),
-      })
-      const videoData = await videoRes.json()
+    if (milestoneResult.requires_resource) {
+      const searchQuery = milestoneResult.search_query || `${milestoneResult.title} demonstration`
+      const recommendedType = milestoneResult.recommended_resource_type || 'video'
+
+      console.log(`[SEARCH] Looking for support resource: "${searchQuery}" (Recommended: ${recommendedType})`)
       
-      if (videoData.success && videoData.video) {
-        console.log(`[SEARCH] Found video: ${videoData.video.title}`)
-        supportResource = {
-          type: 'video',
-          title: videoData.video.title,
-          url: videoData.video.url,
-          thumbnail_url: videoData.video.thumbnail_url,
-          description: videoData.video.description
+      try {
+        const searchVideo = async () => {
+          const videoRes = await fetch(`${SUPABASE_URL}/functions/v1/search-resources`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+            body: JSON.stringify({ 
+              step_title: searchQuery,
+              course_title: phaseTitle,
+              phase_title: phaseTitle,
+              primaryLanguage,
+              secondaryLanguages
+            }),
+          })
+          const videoData = await videoRes.json()
+          return (videoData.success && videoData.video) ? videoData.video : null
         }
-      } else {
-        // 2. Try Web Search if Video fails
-        console.log(`[SEARCH] No video found, trying web search...`)
-        const webRes = await fetch(`${SUPABASE_URL}/functions/v1/search-web-resource`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
-          body: JSON.stringify({ query: searchQuery }),
-        })
-        const webData = await webRes.json()
-        
-        if (webData.success && webData.results?.length > 0) {
-          const res = webData.results[0]
-          console.log(`[SEARCH] Found web resource: ${res.title}`)
-          supportResource = {
-            type: 'webpage',
-            title: res.title,
-            url: res.link,
-            thumbnail_url: res.thumbnail_url,
-            description: res.snippet
+
+        const searchWeb = async () => {
+          const webRes = await fetch(`${SUPABASE_URL}/functions/v1/search-web-resource`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+            body: JSON.stringify({ 
+              query: searchQuery,
+              primaryLanguage,
+              secondaryLanguages
+            }),
+          })
+          const webData = await webRes.json()
+          return (webData.success && webData.results?.length > 0) ? webData.results[0] : null
+        }
+
+        if (recommendedType === 'video') {
+          // Video First
+          const video = await searchVideo()
+          if (video) {
+            supportResource = {
+              type: 'video',
+              title: video.title,
+              url: video.url,
+              thumbnail_url: video.thumbnail_url,
+              description: video.description
+            }
+          } else {
+            const web = await searchWeb()
+            if (web) {
+              supportResource = {
+                type: 'webpage',
+                title: web.title,
+                url: web.link,
+                thumbnail_url: web.thumbnail_url,
+                description: web.snippet
+              }
+            }
+          }
+        } else {
+          // Web First
+          const web = await searchWeb()
+          if (web) {
+            supportResource = {
+              type: 'webpage',
+              title: web.title,
+              url: web.link,
+              thumbnail_url: web.thumbnail_url,
+              description: web.snippet
+            }
+          } else {
+            const video = await searchVideo()
+            if (video) {
+              supportResource = {
+                type: 'video',
+                title: video.title,
+                url: video.url,
+                thumbnail_url: video.thumbnail_url,
+                description: video.description
+              }
+            }
           }
         }
+      } catch (searchErr) {
+        console.error("[SEARCH ERROR] Support resource search failed:", searchErr)
       }
-    } catch (searchErr) {
-      console.error("[SEARCH ERROR] Support resource search failed:", searchErr)
+    } else {
+      console.log("[SEARCH] AI decided no support resource is required for this milestone.")
     }
 
     // --- Salvataggio DB ---
@@ -257,7 +327,14 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     if (extracted) finalThumbnail = extracted
   }
   
-  // Create new resource
+  // Categorize resource via LLM before saving
+  const metadata = await categorizeResource({
+    title: resource.title,
+    description: resource.description || '',
+    type: resource.type
+  })
+
+  // Create new resource with categorization metadata
   const { data: newResource, error: createError } = await supabase
     .from('resources')
     .insert({
@@ -265,7 +342,15 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
       url: cleanUrl,
       thumbnail_url: finalThumbnail,
       summary: resource.description,
-      type: resource.type
+      type: resource.type,
+      domain: metadata.domain,
+      subdomain: metadata.subdomain,
+      primary_topics: metadata.primary_topics,
+      skill_level: metadata.skill_level,
+      learning_objectives: metadata.learning_objectives,
+      prerequisites: metadata.prerequisites,
+      language: metadata.language,
+      searchable_text: metadata.searchable_text
     })
     .select('id')
     .single()
