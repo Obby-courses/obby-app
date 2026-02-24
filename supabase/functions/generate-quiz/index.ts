@@ -108,7 +108,9 @@ async function handleSkillAssessment({ courseId, courseTitle, macroPhases, GROQ_
         macro_phase_title: matchingMacro?.title || '',
         order_index: q.macro_phase_order,
         question: q.question,
-        keywords_tested: q.keywords_tested || []
+        type: q.type || 'knowledge',
+        keywords_tested: q.keywords_tested || [],
+        clarification: q.clarification || ''
       }
     })
 

@@ -13,7 +13,7 @@ import {
     Pressable,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import MilestoneItem from './MilestoneItem'
@@ -161,7 +161,7 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                     .single(),
                 supabase
                     .from('macro_phases')
-                    .select('id, order_index')
+                    .select('id, title, order_index')
                     .eq('course_id', courseId)
                     .order('order_index'),
                 supabase

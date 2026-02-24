@@ -231,7 +231,7 @@ RULES:
 - **USE BROAD, COMMON TERMS**: Use words like "Tutorial", "Guide", "Lesson", "Course" for educational steps. 
 - **SHOWCASE EXCEPTION**: If the step intent is to see a result or demonstration (indicated by words like "Demonstration", "Performance", "Showcase", "Example"), use those specific keywords instead of "Tutorial".
 - **AVOID OVER-SPECIFICITY**: Do not include too many adjectives. "Guitar chords tutorial" is better than "Guitar chords for beginners with small hands tutorial".
-- **LINGUA**: Genera la query di ricerca ottimizzata per trovare contenuti pertinenti, ma assicurati che ogni testo di accompagnamento o metadato richiesto sia in ITALIANO. La query stessa può contenere termini inglesi se tecnici, ma l'output strutturato deve essere pensato per un utente ITALIANO.
+- **LINGUA**: Genera la query di ricerca ottimizzata. Ogni testo di accompagnamento, metadato o descrizione dell'intento deve essere ESCLUSIVAMENTE in lingua ITALIANA. La query stessa può contenere termini inglesi se tecnici, ma l'output strutturato deve essere pensato per un utente ITALIANO.
 - CRITICAL: Anchor the query to the specific domain context (Course Description).
 
 GOAL: Find a video that covers the *general topic* of the step or shows a clear *demonstration* of the result.
@@ -712,7 +712,12 @@ CRITICAL REQUIREMENTS:
    
 4. QUALITY OVER QUANTITY: Better to have 4 excellent resources than 6 mediocre ones
 
-5. RESOURCE EFFICIENCY: If one resource covers 2 themes well, use it for both (in a single comprehensive step)
+5. RESOURCE EFFICIENCY: If one resource covers 2 themes well, use it for both (in a single comprehensive step).
+
+**LINGUA OBBLIGATORIA**:
+- Tutti i campi testuali generati (**step_title**, **learning_objective**, **rationale**, **coverage_analysis**, **missing_topic**, **why_important**) devono essere scritti ESCLUSIVAMENTE in lingua **ITALIANA**.
+- Traduci i titoli o le descrizioni delle risorse se sono in inglese. L'utente finale deve vedere solo contenuti in italiano.
+- Non usare termini inglesi a meno che non siano termini tecnici universali e non traducibili.
 
 SELECTION CRITERIA:
 - Relevance: How well does it match the theme intent?
@@ -833,6 +838,10 @@ TASK:
 Select the best 4-6 resources that form a complete learning path.
 Ensure NO overlap, logical progression, and coverage of all essential themes.
 If existing steps are present, complement them without repetition.
+
+**STRICT LANGUAGE RULE**:
+All generated text fields (step_title, learning_objective, rationale, etc.) MUST be in **ITALIAN**.
+Translate any titles or descriptions from the candidate resources into Italian for the output.
 
 Return your selection in the JSON format specified above.`;
 }
@@ -1000,28 +1009,63 @@ Return JSON following the schema above.`;
 // -------------------------------------------------------
 // QUIZ GENERATION (Extensible for multiple quiz types)
 // -------------------------------------------------------
-export const QUIZ_GENERATOR = `You are an expert educational assessment designer.
+export const QUIZ_GENERATOR = `You are an expert educational assessment designer generating OBJECTIVE placement questions.
 
-Your task is to generate YES/NO skill assessment questions for a course. Each question tests whether the learner ALREADY HAS practical familiarity with the content of a specific macro-phase.
+Your task is to generate EXACTLY 1 binary YES/NO question per macro-phase to determine a user's starting level.
 
-CRITICAL RULES:
-1. Generate EXACTLY 1 question per macro-phase provided
-2. Questions must test PRACTICAL ABILITY, not theoretical knowledge:
-   ✅ GOOD: "Sai già accordare una chitarra e mantenere la postura corretta?"
-   ❌ BAD: "Sai cos'è l'accordatura?" (too theoretical)
-3. Each question should synthesize 2-3 keywords from the macro-phase into a single clear scenario
-4. Questions MUST be answerable with a simple "Yes, I can do this" or "No, I need to learn this"
-5. Progressive difficulty: question for macro-phase 1 should be basic, question for macro-phase 6 should be advanced
-6. Lingua: Tutte le domande devono essere ESCLUSIVAMENTE in lingua ITALIANA.
-7. Questions should be concise (1-2 sentences max)
+# QUESTION PHILOSOPHY (CRITICAL)
+**NEVER** ask subjective self-evaluations ("Sei bravo con X?", "Quanto conosci X?", "Ti senti sicuro?").
+**ALWAYS** ask OBJECTIVE FACTS: either the user KNOWS something or HAS DONE something. Certainty must be absolute.
 
-OUTPUT FORMAT (JSON only, no additional text):
+# QUESTION TYPES (alternate between these)
+Use TYPE "knowledge" for odd macro-phases (1, 3, 5) and TYPE "experience" for even macro-phases (2, 4, 6).
+
+## TYPE: knowledge (Conceptual)
+Tests if user KNOWS a specific term, concept, or principle.
+Patterns: "Sai cos'è [TERM]?", "Conosci la differenza tra [A] e [B]?", "Sai come funziona [MECHANISM]?"
+✅ "Sai cos'è il ROI (Return On Investment)?"
+✅ "Conosci la differenza tra SEO e SEM?"
+❌ "Quanto conosci il marketing?" (subjective, no scale)
+
+## TYPE: experience (Practical)
+Tests if user HAS PERFORMED a specific, concrete action at least once.
+Patterns: "Hai mai [SPECIFIC_ACTION]?", "Hai mai usato [TOOL]?", "Hai mai creato [DELIVERABLE]?"
+✅ "Hai mai lanciato una campagna pubblicitaria a pagamento?"
+✅ "Hai mai suonato un accordo con barré sulla chitarra?"
+❌ "Sai usare bene Google Analytics?" (subjective)
+
+# ANTI-PATTERNS (NEVER DO THIS)
+❌ Subjective: "Quanto sei bravo con...", "Ti senti sicuro nel..."
+❌ Compound: "Sai cos'è X e hai mai fatto Y?" (two questions in one)
+❌ Vague: "Hai esperienza con il marketing?" (too broad)
+❌ Opinionated: "Pensi di poter gestire...?"
+❌ Ambiguous: "Hai usato un po' di strumenti di...?"
+
+# DIFFICULTY CALIBRATION
+- macro-phase 1 (FONDAMENTI) → basic terms, simple actions
+- macro-phase 2-3 → intermediate concepts, real tasks
+- macro-phase 4-5 → advanced techniques, complex implementations
+- macro-phase 6 (MASTERY) → expert-level knowledge, professional experience
+
+# VALIDATION SELF-CHECK (apply before each question)
+✅ Can be answered with absolute YES or NO?
+✅ No scales, ratings, or degrees?
+✅ Single, specific thing being asked?
+✅ User can self-verify answer with certainty?
+✅ Tests 2-3 keywords from the macro-phase?
+
+# LINGUA
+Tutte le domande e chiarificazione devono essere ESCLUSIVAMENTE in lingua ITALIANA.
+
+# OUTPUT FORMAT (JSON only)
 {
   "questions": [
     {
       "macro_phase_order": number,
-      "question": "string",
-      "keywords_tested": ["keyword1", "keyword2"]
+      "question": "string - domanda oggettiva YES/NO",
+      "type": "knowledge | experience",
+      "keywords_tested": ["keyword1", "keyword2"],
+      "clarification": "string - Cosa significa rispondere SÌ (1 frase concreta)"
     }
   ]
 }`;
@@ -1049,9 +1093,14 @@ MACRO-PHASES (ordered by difficulty, 1 = beginner, 6 = expert):
 ${phasesContext}
 
 TASK:
-Generate exactly 1 YES/NO question per macro-phase.
-Each question should test whether the learner can ALREADY DO the practical skills described by that macro-phase's keywords.
-The user will answer these questions to determine their starting level in the course.
+Generate exactly 1 OBJECTIVE YES/NO question per macro-phase.
+- Alternate question types: knowledge for odd phases (1,3,5), experience for even phases (2,4,6).
+- Each question must test 2-3 keywords from that macro-phase.
+- Include a "clarification" field explaining what answering YES concretely means.
+- Calibrate difficulty to the macro-phase level.
+- NO subjective self-assessments. Only factual knowledge or concrete past actions.
+
+USER GUIDANCE: "Se non sei sicuro, rispondi NO. È meglio ripassare che saltare basi importanti."
 
 Return ONLY valid JSON.`;
 }

@@ -459,11 +459,7 @@ export default function StepItem({
                   )}
                 </View>
 
-
-
-                <Text
-                  style={styles.mainTitle}
-                >
+                <Text style={styles.mainTitle}>
                   {step.title}
                 </Text>
 
