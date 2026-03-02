@@ -826,6 +826,36 @@ serve(async (req: Request) => {
         }
     }
 
+    // TRIGGER DEDICATED MILESTONE GENERATION (Post-Bulk Save)
+    try {
+        console.log(`[BULK] Triggering dedicated milestone generation for phase ${phaseId}...`)
+        // Fire and forget (optional, but better to await or handle in background if possible)
+        // Here we await for safety but in a real high-perf scenario we might just fire it
+        const milestoneTrigger = await fetch(`${SUPABASE_URL}/functions/v1/create-milestone`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            Authorization: `Bearer ${SERVICE_ROLE}`,
+            apikey: SERVICE_ROLE
+          },
+          body: JSON.stringify({
+            courseId,
+            phaseId,
+            phaseTitle,
+            phaseKeywords: effectiveKeywords,
+            steps: createdSteps // Pass the newly created steps as context
+          })
+        })
+        
+        if (milestoneTrigger.ok) {
+            console.log("✅ Milestone generation triggered successfully via dedicated function")
+        } else {
+            console.error(`[TRIGGER ERROR] Milestone function returned ${milestoneTrigger.status}`)
+        }
+    } catch (mErr) {
+        console.error("[TRIGGER ERROR] Failed to call dedicated milestone function:", mErr)
+    }
+
     return new Response(JSON.stringify({ 
         success: true, 
         created_steps_count: createdSteps.length,

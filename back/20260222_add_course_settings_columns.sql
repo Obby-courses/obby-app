@@ -1,0 +1,3 @@
+ALTER TABLE public.courses 
+ADD COLUMN IF NOT EXISTS color_index INTEGER,
+ADD COLUMN IF NOT EXISTS deadlines_enabled BOOLEAN DEFAULT TRUE;

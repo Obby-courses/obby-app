@@ -2,6 +2,16 @@
 
 Tutti i cambiamenti significativi a questo progetto saranno documentati in questo file.
 
+## [1.1.9] - 2026-03-02
+
+### ✨ Novità
+- **Documentazione Funzionale**: Aggiunto documento dettagliato `DOCUMENTAZIONE_FUNZIONALE.md` che descrive l'architettura tecnica e i flussi AI dell'app.
+- **Allineamento Milestone**: Migliorata la logica di generazione delle milestone per essere strettamente basata sulle competenze effettivamente insegnate negli step.
+
+### 🛠️ Miglioramenti & Fix
+- **Stabilità Bulk Generation**: Ottimizzazione della robustezza nella generazione massiva dei corsi.
+- **YouTube Embeds**: Miglioramento della conformità e della qualità dei player video integrati.
+
 ## [1.1.0] - 2026-02-08
 
 ### ✨ Novità

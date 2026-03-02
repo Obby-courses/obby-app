@@ -7,12 +7,15 @@ import { Text, View } from 'react-native'
 type Props = {
   visible: boolean
   status: LoadingStatus
+  customSubtitle?: string
 }
 
-export default function LoadingOverlay({ visible, status }: Props) {
+export default function LoadingOverlay({ visible, status, customSubtitle }: Props) {
   if (!visible) return null
 
   const message = loadingMessages[status]
+  const displaySubtitle = customSubtitle || message.subtitle
+
 
   return (
     <View
@@ -35,7 +38,7 @@ export default function LoadingOverlay({ visible, status }: Props) {
         {message.title}
       </Text>
 
-      {message.subtitle && (
+      {displaySubtitle && (
         <Text
           style={{
             ...typography.body,
@@ -45,9 +48,10 @@ export default function LoadingOverlay({ visible, status }: Props) {
             fontWeight: '600',
           }}
         >
-          {message.subtitle}
+          {displaySubtitle}
         </Text>
       )}
+
     </View>
   )
 }

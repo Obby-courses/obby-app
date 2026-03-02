@@ -31,6 +31,7 @@ type MilestoneItemProps = {
                 description?: string
             }
             pedagogical_summary?: string
+            exercise_text?: string
         }
     }
     courseId: string
@@ -226,12 +227,22 @@ export default function MilestoneItem({
                         </Text>
                     </View>
 
+                    {localMilestone.target_config?.exercise_text && (
+                        <View style={[styles.exerciseCard, { borderColor: courseColor + '40' }]}>
+                            <Text style={[styles.exerciseLabel, { color: courseColor }]}>COSA FARE:</Text>
+                            <Text style={styles.exerciseText}>
+                                {localMilestone.target_config.exercise_text}
+                            </Text>
+                        </View>
+                    )}
+
                     {localMilestone.target_config?.pedagogical_summary && (
                         <View style={styles.supportSection}>
-                            <Text style={styles.supportLabel}>PER COMINCIARE:</Text>
+                            <Text style={styles.supportLabel}>RIFERIMENTO PRATICO:</Text>
                             <Text style={styles.supportSummary}>
                                 {localMilestone.target_config.pedagogical_summary}
                             </Text>
+
 
                             {localMilestone.target_config.support_resource && (
                                 <Pressable
@@ -510,5 +521,27 @@ const styles = StyleSheet.create({
         width: '110%',
         height: '110%',
         left: '-5%',
+    },
+    exerciseCard: {
+        marginTop: 32,
+        padding: 24,
+        borderRadius: 24,
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderStyle: 'dashed',
+    },
+    exerciseLabel: {
+        ...typography.label,
+        fontSize: 10,
+        fontWeight: '900',
+        marginBottom: 8,
+        letterSpacing: 1.5,
+    },
+    exerciseText: {
+        ...typography.body,
+        fontSize: 18,
+        lineHeight: 28,
+        color: palette.black,
+        fontWeight: '700',
     },
 })

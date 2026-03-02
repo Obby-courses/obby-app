@@ -5,6 +5,7 @@ export type LoadingStatus =
   | 'GENERATING_MILESTONE'
   | 'GENERATING_ASSESSMENT'
   | 'SUCCESS_PHASE'
+  | 'BULK_GENERATING'
 
 type LoadingMessage = {
   icon: any
@@ -42,5 +43,10 @@ export const loadingMessages: Record<LoadingStatus, LoadingMessage> = {
     icon: 'star-outline',
     title: 'Fase Completata!',
     subtitle: 'Ottimo lavoro, hai sbloccato un nuovo traguardo',
+  },
+  BULK_GENERATING: {
+    icon: 'construct-outline',
+    title: 'Bulk Generation',
+    subtitle: 'Generazione completa del corso in corso...',
   },
 }

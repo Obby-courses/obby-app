@@ -2,7 +2,7 @@
   "expo": {
     "name": "Obby",
     "slug": "obby",
-    "version": "1.1.6",
+    "version": "1.1.9",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -43,7 +43,7 @@
     "orientation": "default",
     "android": {
       "package": "com.obby.app",
-      "versionCode": 15,
+      "versionCode": 18,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png",
@@ -53,7 +53,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.obby.app",
-      "buildNumber": "1.1.6",
+      "buildNumber": "1.1.9",
       "supportsTablet": true
     }
   }

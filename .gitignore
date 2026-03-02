@@ -46,3 +46,6 @@ app-example
 supabase/.temp/
 supabase/.branches/
 supabase/.env
+
+# Course exports
+export_corsi/

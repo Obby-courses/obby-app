@@ -3,6 +3,9 @@
 
 **Obby** è la tua piattaforma di apprendimento personalizzata che trasforma obiettivi complessi in percorsi chiari, visivi e coinvolgenti. Grazie all'intelligenza artificiale, puoi generare corsi su misura per qualsiasi argomento e seguirli attraverso una mappa interattiva ed immersiva.
 
+> [!TIP]
+> Per una panoramica approfondita del funzionamento tecnico e funzionale dell'app, consulta la [Documentazione Funzionale](./DOCUMENTAZIONE_FUNZIONALE.md).
+
 ---
 
 ## ✨ Caratteristiche Principali (v1.1.0)

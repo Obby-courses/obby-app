@@ -108,6 +108,7 @@ export default function Index() {
             )
           )
         `)
+      .eq('is_published', true)
       .order('order_index', { foreignTable: 'phases' })
       .order('order_index', { foreignTable: 'phases.steps' })
       .order('order_index', { foreignTable: 'phases.milestones' })

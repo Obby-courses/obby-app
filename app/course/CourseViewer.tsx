@@ -1,6 +1,6 @@
 import { getCourseColor } from '@/constants/courseColors'
 import { supabase } from '@/lib/supabase'
-import { colors, radius, spacing, typography } from '@/lib/theme'
+import { colors, palette, radius, spacing, typography } from '@/lib/theme'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -262,59 +262,60 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
     function recomputeMapContent(allSteps: Step[], allMilestones: Milestone[], currentPhases: Phase[], currentMacroPhases: any[]) {
         const content: any[] = []
 
-        const firstIncompletePhase = getActivePhase(currentPhases, allSteps)
+        // Sort all macro phases
+        const sortedMacros = [...currentMacroPhases].sort((a, b) => a.order_index - b.order_index)
 
-        const currentMacroPhaseId = firstIncompletePhase?.macro_phase_id || currentPhases[currentPhases.length - 1]?.macro_phase_id
-        const currentMacroOrder = currentMacroPhases.find(m => m.id === currentMacroPhaseId)?.order_index || 0
+        sortedMacros.forEach(macro => {
+            // Add a Header for the Macro Phase
+            content.push({
+                id: `macro-${macro.id}`,
+                title: macro.title,
+                isMacroHeader: true
+            })
 
-        const visiblePhases = [...currentPhases].sort((a, b) => {
-            const m1 = currentMacroPhases.find(m => m.id === a.macro_phase_id)
-            const m2 = currentMacroPhases.find(m => m.id === b.macro_phase_id)
-            if (m1 && m2 && m1.order_index !== m2.order_index) return m1.order_index - m2.order_index
-            return a.order_index - b.order_index
-        }).filter(p => {
-            const phaseMacro = currentMacroPhases.find(m => m.id === p.macro_phase_id)
-            return phaseMacro && phaseMacro.order_index <= currentMacroOrder
-        })
+            // Find phases for this macro
+            const macroPhases = currentPhases
+                .filter(p => p.macro_phase_id === macro.id)
+                .sort((a, b) => a.order_index - b.order_index)
 
-        visiblePhases.forEach(p => {
-            const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
+            macroPhases.forEach(p => {
+                const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
 
-            if (phaseSteps.length > 0) {
-                // Populated phase
-                phaseSteps.sort((a, b) => a.order_index - b.order_index)
-                content.push(...phaseSteps)
-            } else {
-                // Future/Virtual phase - Show placeholders
-                // Use phase ID as seed for consistent randomization
-                const seed = p.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-                const numPlaceholders = 3 + (seed % 3) // Random 3, 4, or 5
+                if (phaseSteps.length > 0) {
+                    // Populated phase
+                    phaseSteps.sort((a, b) => a.order_index - b.order_index)
+                    content.push(...phaseSteps)
+                } else {
+                    // Future/Virtual phase - Show placeholders
+                    const seed = p.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+                    const numPlaceholders = 3 + (seed % 3)
 
-                for (let i = 0; i < numPlaceholders; i++) {
+                    for (let i = 0; i < numPlaceholders; i++) {
+                        content.push({
+                            id: `placeholder-${p.id}-${i}`,
+                            phase_id: p.id,
+                            isPlaceholder: true,
+                            isMilestone: false,
+                        })
+                    }
+                }
+
+                const milestone = allMilestones.find(m => m.phase_id === p.id)
+                if (milestone) {
+                    content.push({ ...milestone, isMilestone: true, phase_id: p.id })
+                } else {
+                    // Virtual milestone placeholder
                     content.push({
-                        id: `placeholder-${p.id}-${i}`,
+                        id: `virtual-${p.id}`,
+                        title: p.title,
+                        description: 'Sfida finale per completare questa fase.',
+                        isMilestone: true,
                         phase_id: p.id,
-                        isPlaceholder: true,
-                        isMilestone: false,
+                        isVirtual: true,
+                        milestone_type: 'test_finale'
                     })
                 }
-            }
-
-            const milestone = allMilestones.find(m => m.phase_id === p.id)
-            if (milestone) {
-                content.push({ ...milestone, isMilestone: true, phase_id: p.id })
-            } else {
-                // Virtual milestone placeholder
-                content.push({
-                    id: `virtual-${p.id}`,
-                    title: p.title,
-                    description: 'Sfida finale per completare questa fase.',
-                    isMilestone: true,
-                    phase_id: p.id,
-                    isVirtual: true,
-                    milestone_type: 'test_finale'
-                })
-            }
+            })
         })
 
         setMapItems(content)
@@ -393,6 +394,18 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
     /* ---------------- RENDER ---------------- */
 
     const renderItem = ({ item, index }: { item: any, index: number }) => {
+        if (item.isMacroHeader) {
+            return (
+                <View style={{ paddingVertical: 40, alignItems: 'center', width: '100%' }}>
+                    <View style={{ backgroundColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)' }}>
+                        <Text style={{ ...typography.label, fontSize: 12, color: palette.gray, letterSpacing: 2 }}>
+                            {item.title}
+                        </Text>
+                    </View>
+                </View>
+            )
+        }
+
         // Determine Zigzag alignment
         const offsetMap = [0, -45, 0, 45]
         const alignment = item.isMilestone ? 0 : offsetMap[index % 4]

@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Slider } from '@react-native-assets/slider'
 import { useRouter } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
-import { Animated, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Animated, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -30,9 +30,11 @@ export default function NewCourseAIScreen() {
   const [courseInput, setCourseInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('CREATING_COURSE')
+  const [bulkProgressLabel, setBulkProgressLabel] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [stepsPerWeek, setStepsPerWeek] = useState(3)
   const [searchMode, setSearchMode] = useState<SearchMode>('mixed')
+  const [isBulkMode, setIsBulkMode] = useState(false)
 
   // Language prefs from user profile
   const primaryLanguage = profile?.primary_language || 'it'
@@ -53,107 +55,189 @@ export default function NewCourseAIScreen() {
     }).start()
   }, [])
 
+  /* =======================================================
+      BULK DEV GENERATION (usa generate-skeleton)
+     ======================================================= */
+  async function handleBulkGenerate() {
+    if (!courseInput.trim()) return
+    setIsProcessing(true)
+    setError(null)
+    setLoadingStatus('BULK_GENERATING')
+
+    try {
+      /* STEP 1 — SCHELETRO UNIFICATO (Macro + Fasi in una sola chiamata) */
+      setBulkProgressLabel('🏗️ Generazione scheletro completo del corso...')
+      const skeletonRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-skeleton`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ topic: courseInput.trim(), userId: user?.id }),
+      })
+      const skeletonData = await skeletonRes.json()
+      if (!skeletonRes.ok || !skeletonData.success) throw new Error(skeletonData.error || 'Errore generazione scheletro')
+
+      const courseId = skeletonData.courseId
+      const mPhases = skeletonData.macro_phases // già include id, title, description, keywords, phases[]
+      const totalMacros = mPhases.length
+
+      setBulkProgressLabel(`✅ Scheletro creato: ${totalMacros} macrofasi, ${skeletonData.total_phases} fasi totali`)
+
+      const daysPerStep = parseFloat((7 / stepsPerWeek).toFixed(2))
+      await supabase.from('courses').update({ days_per_step: daysPerStep }).eq('id', courseId)
+
+      const { data: courseData } = await supabase
+        .from('courses').select('title, description').eq('id', courseId).single()
+
+      /* STEP 2..N — per ogni fase nello scheletro: step → resources → milestone */
+      let totalSteps = 0
+
+      for (let mi = 0; mi < mPhases.length; mi++) {
+        const macro = mPhases[mi]
+        const phases = macro.phases || []
+
+        for (let pi = 0; pi < phases.length; pi++) {
+          const phase = phases[pi]
+          let stepsCreatedInThisPhase = 0
+
+          if (pi > 0 || mi > 0) {
+            setBulkProgressLabel(
+              `⏳ Attesa API...\n(Totali: ${totalSteps} step)`
+            )
+            await new Promise(r => setTimeout(r, 3000))
+          }
+
+          /* Steps */
+          setBulkProgressLabel(
+            `📋 Generazione Step...\n${phase.title}\n(Totali: ${totalSteps})`
+          )
+          try {
+            const stepsRes = await fetch(`${SUPABASE_URL}/functions/v1/create-steps`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+              body: JSON.stringify({
+                courseId,
+                phaseId: phase.id,
+                phaseTitle: phase.title,
+                phaseDescription: phase.description,
+                courseTitle: courseData?.title,
+                courseDescription: courseData?.description,
+                searchMode,
+                primaryLanguage,
+                secondaryLanguages,
+                priorKnowledge: mPhases.slice(0, mi).map((mp: any) => ({ title: mp.title, description: mp.description, keywords: mp.keywords }))
+              }),
+            })
+            const stepsData = await stepsRes.json()
+            if (stepsData.success && stepsData.created_steps_count) {
+              stepsCreatedInThisPhase = stepsData.created_steps_count
+              totalSteps += stepsCreatedInThisPhase
+              console.log(`✅ ${stepsCreatedInThisPhase} step creati per "${phase.title}"`)
+            }
+          } catch (stepErr: any) {
+            // Silently continue
+          }
+
+          /* Resources */
+          if (stepsCreatedInThisPhase > 0) {
+            setBulkProgressLabel(
+              `🔗 Recupero Risorse...\n${phase.title}`
+            )
+            try {
+              await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+                body: JSON.stringify({ phaseId: phase.id, primaryLanguage, secondaryLanguages }),
+              })
+            } catch (resErr: any) {
+              // Silently continue
+            }
+          }
+
+        }
+      }
+
+      setBulkProgressLabel(`✅ Completato! ${totalSteps} step generati in ${skeletonData.total_phases} fasi.`)
+
+      /* FINALLY: PUBLISH COURSE */
+      await supabase.from('courses').update({ is_published: true }).eq('id', courseId)
+
+      await new Promise(r => setTimeout(r, 800))
+      router.push(`/course/${courseId}`)
+
+    } catch (err: any) {
+      console.error('❌ Bulk generation error:', err.message)
+      setError(err.message)
+    } finally {
+      setIsProcessing(false)
+      setBulkProgressLabel('')
+    }
+  }
+
+  /* =======================================================
+      NORMAL GENERATION (usa generate-skeleton)
+     ======================================================= */
   async function handleGenerateComplete() {
     if (!courseInput.trim()) return
     setIsProcessing(true)
     setError(null)
 
     try {
-
-
-      /* =======================================================
-          STEP 1 — MACRO PHASES + COURSE CREATION
-         ======================================================= */
+      /* STEP 1 — SCHELETRO UNIFICATO (Macro + Fasi) */
       setLoadingStatus('CREATING_COURSE')
 
-      const macroRes = await fetch(`${SUPABASE_URL}/functions/v1/create-macrophases`, {
+      const skeletonRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-skeleton`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          topic: courseInput.trim(),
-          userId: user?.id
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ topic: courseInput.trim(), userId: user?.id }),
       })
 
-      const macroText = await macroRes.text()
-      let macroData: any
+      const skeletonText = await skeletonRes.text()
+      let skeletonData: any
       try {
-        macroData = JSON.parse(macroText)
+        skeletonData = JSON.parse(skeletonText)
       } catch (e) {
-        console.error('❌ Failed to parse Step 1 JSON. Raw response:', macroText)
-        throw new Error(`Server returned HTML instead of JSON (Step 1). Status: ${macroRes.status}`)
+        console.error('❌ Failed to parse skeleton JSON. Raw response:', skeletonText)
+        throw new Error(`Server returned HTML instead of JSON. Status: ${skeletonRes.status}`)
       }
 
-      if (!macroRes.ok || !macroData.success) throw new Error(macroData.error || 'Errore Step 1')
+      if (!skeletonRes.ok || !skeletonData.success) throw new Error(skeletonData.error || 'Errore generazione scheletro')
 
-      const courseId = macroData.courseId
+      const courseId = skeletonData.courseId
+      const mPhases: any[] = skeletonData.macro_phases
 
-      // AGGIORNA IL CORSO DIRETTAMENTE (senza toccare il backend)
       const daysPerStep = parseFloat((7 / stepsPerWeek).toFixed(2))
       const { error: updateError } = await supabase
-        .from('courses')
-        .update({ days_per_step: daysPerStep })
-        .eq('id', courseId)
+        .from('courses').update({ days_per_step: daysPerStep }).eq('id', courseId)
 
       if (updateError) console.error('Errore salvataggio days_per_step:', updateError)
 
-      // Recuperiamo i testi reali generati dall'AI (Titolo e Descrizione del corso)
       const { data: courseData, error: courseError } = await supabase
-        .from('courses')
-        .select('title, description')
-        .eq('id', courseId)
-        .single()
+        .from('courses').select('title, description').eq('id', courseId).single()
 
       if (courseError || !courseData) throw new Error('Errore caricamento dettagli corso')
 
-      // Recupero le macro-fasi con keywords
-      const { data: mPhases } = await supabase
-        .from('macro_phases')
-        .select('id, title, description, order_index, keywords')
-        .eq('course_id', courseId)
-        .order('order_index')
-
-      if (!mPhases?.length) throw new Error('Nessuna macro-fase trovata')
-
-      /* =======================================================
-          STEP 1.5 — SKILL ASSESSMENT (Binary Search Quiz)
-         ======================================================= */
+      /* STEP 1.5 — SKILL ASSESSMENT */
       setLoadingStatus('GENERATING_ASSESSMENT')
 
-      let startIndex = 0
+      let startMacroIndex = 0
       try {
         const quizRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-quiz`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-          },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
           body: JSON.stringify({
             quizType: 'skill_assessment',
             courseId,
             courseTitle: courseData.title,
-            macroPhases: mPhases.map(mp => ({
-              id: mp.id,
-              title: mp.title,
-              keywords: mp.keywords || [],
-              order_index: mp.order_index,
-            })),
+            macroPhases: mPhases.map(mp => ({ id: mp.id, title: mp.title, keywords: mp.keywords || [], order_index: mp.order_index })),
           }),
         })
 
         const quizData = await quizRes.json()
 
-
         if (quizData.success && quizData.questions?.length > 0) {
-          // Show assessment modal and wait for user response
           setAssessmentQuestions(quizData.questions)
           setShowAssessment(true)
 
-          // Pause the generation flow until user completes the quiz
-          startIndex = await new Promise<number>((resolve) => {
+          startMacroIndex = await new Promise<number>((resolve) => {
             assessmentResolveRef.current = resolve
           })
 
@@ -163,64 +247,20 @@ export default function NewCourseAIScreen() {
         }
       } catch (quizErr: any) {
         console.warn('⚠️ Assessment error (non-blocking):', quizErr.message)
-        // Non-blocking: if quiz fails, just start from the beginning
       }
 
-      const targetMacro = mPhases[startIndex]
+      /* Identifica la prima fase dalla macro di partenza */
+      const targetMacro = mPhases[startMacroIndex]
+      const targetPhase = targetMacro?.phases?.[0]
 
-      /* =======================================================
-          STEP 2 — PHASES GENERATION
-         ======================================================= */
-      setLoadingStatus('GENERATING_PHASES')
+      if (!targetPhase?.id) throw new Error('Nessuna fase trovata nel percorso generato')
 
-      const phaseRes = await fetch(`${SUPABASE_URL}/functions/v1/create-phases`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          courseId,
-          courseTitle: courseData.title,
-          macroPhaseId: targetMacro.id,
-          macroPhaseTitle: targetMacro.title,
-          macroPhaseDescription: targetMacro.description,
-          orderIndex: targetMacro.order_index,
-          priorKnowledge: mPhases.slice(0, startIndex).map(mp => ({
-            title: mp.title,
-            description: mp.description,
-            keywords: mp.keywords
-          }))
-        }),
-      })
-
-      const phaseData = await phaseRes.json()
-      if (!phaseRes.ok || !phaseData.success) throw new Error(phaseData.error || 'Errore Step 2')
-
-      /* Delay di sincronizzazione DB */
-      await new Promise((r) => setTimeout(r, 1500))
-
-      // Recupero la prima fase effettiva per generare gli step
-      const { data: phases } = await supabase
-        .from('phases')
-        .select('id, title, description')
-        .eq('macro_phase_id', targetMacro.id)
-        .order('order_index')
-
-      if (!phases || phases.length === 0) throw new Error('Le fasi non sono ancora leggibili')
-      const targetPhase = phases[0]
-
-      /* =======================================================
-          STEP 3 — STEPS (con contesto completo)
-         ======================================================= */
+      /* STEP 2 — STEPS per la prima fase */
       setLoadingStatus('GENERATING_STEPS')
 
       const stepsRes = await fetch(`${SUPABASE_URL}/functions/v1/create-steps`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
           courseId,
           phaseId: targetPhase.id,
@@ -231,43 +271,22 @@ export default function NewCourseAIScreen() {
           searchMode,
           primaryLanguage,
           secondaryLanguages,
-          priorKnowledge: mPhases.slice(0, startIndex).map(mp => ({
-            title: mp.title,
-            description: mp.description,
-            keywords: mp.keywords
-          }))
+          priorKnowledge: mPhases.slice(0, startMacroIndex).map((mp: any) => ({ title: mp.title, description: mp.description, keywords: mp.keywords }))
         }),
       })
 
       const stepsData = await stepsRes.json()
-      if (!stepsRes.ok || !stepsData.success) throw new Error(stepsData.error || 'Errore Step 3')
+      if (!stepsRes.ok || !stepsData.success) throw new Error(stepsData.error || 'Errore Step 2')
 
-
-      /* =======================================================
-          STEP 4 — RESOURCES (Markdown e Link)
-         ======================================================= */
-
-      // Nota: qui potresti voler aggiungere uno stato di loading specifico se lo desideri
-
-      const resourceRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
+      /* STEP 3 — RESOURCES */
+      await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          phaseId: targetPhase.id,
-          primaryLanguage,
-          secondaryLanguages,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ phaseId: targetPhase.id, primaryLanguage, secondaryLanguages }),
       })
 
-      const resourceData = await resourceRes.json()
-
-
-      /* =======================================================
-          FINE — NAVIGAZIONE
-         ======================================================= */
+      /* FINALLY: PUBLISH COURSE */
+      await supabase.from('courses').update({ is_published: true }).eq('id', courseId)
 
       router.push(`/course/${courseId}`)
 
@@ -319,30 +338,36 @@ export default function NewCourseAIScreen() {
               padding: 24,
               minHeight: 180,
               borderWidth: 2,
-              borderColor: palette.border,
+              borderColor: isBulkMode ? '#F97316' : palette.border,
               textAlignVertical: 'top',
               color: palette.black
             }}
           />
           {courseInput.trim().length > 0 && !isProcessing && (
             <Pressable
-              onPress={handleGenerateComplete}
+              onPress={isBulkMode ? handleBulkGenerate : handleGenerateComplete}
               style={{
                 position: 'absolute',
                 bottom: -20,
                 alignSelf: 'center',
-                backgroundColor: palette.black,
+                backgroundColor: isBulkMode ? '#F97316' : palette.black,
                 paddingHorizontal: 32,
                 paddingVertical: 14,
                 borderRadius: 24,
                 elevation: 4,
-                shadowColor: palette.black,
+                shadowColor: isBulkMode ? '#F97316' : palette.black,
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
+                shadowOpacity: 0.3,
                 shadowRadius: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
               }}
             >
-              <Text style={{ color: palette.white, fontWeight: '800', fontSize: 16 }}>GENERA ORA</Text>
+              {isBulkMode && <Ionicons name="construct-outline" size={18} color={palette.white} />}
+              <Text style={{ color: palette.white, fontWeight: '800', fontSize: 16 }}>
+                {isBulkMode ? 'BULK GENERATE' : 'GENERA ORA'}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -421,7 +446,60 @@ export default function NewCourseAIScreen() {
           </View>
         </View>
 
-        {isProcessing && (
+        {/* ⚡ DEV BULK MODE TOGGLE */}
+        <View style={{
+          marginTop: spacing.xl,
+          backgroundColor: isBulkMode ? '#FFF7ED' : '#F5F5F5',
+          borderRadius: 20,
+          padding: 18,
+          borderWidth: 2,
+          borderColor: isBulkMode ? '#F97316' : 'transparent',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Ionicons name="construct-outline" size={18} color={isBulkMode ? '#F97316' : '#999'} />
+              <Text style={{ fontWeight: '900', fontSize: 15, color: isBulkMode ? '#F97316' : '#555' }}>
+                Bulk Dev Mode
+              </Text>
+              <View style={{ backgroundColor: isBulkMode ? '#F97316' : '#999', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>DEV</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: '#888', fontWeight: '500', lineHeight: 16 }}>
+              {isBulkMode
+                ? 'Genererà TUTTO il corso (6 macro × 4 fasi × step + milestone). Tempo: 3–8 min.'
+                : 'Attiva per generare una fotografia completa del corso per analisi.'
+              }
+            </Text>
+          </View>
+          <Switch
+            value={isBulkMode}
+            onValueChange={setIsBulkMode}
+            trackColor={{ false: '#DDD', true: '#FDBA74' }}
+            thumbColor={isBulkMode ? '#F97316' : '#FFF'}
+          />
+        </View>
+
+        {/* Bulk progress label */}
+        {isProcessing && isBulkMode && bulkProgressLabel.length > 0 && (
+          <View style={{
+            backgroundColor: '#FFF7ED',
+            padding: spacing.md,
+            borderRadius: radius.md,
+            marginTop: spacing.xl,
+            borderWidth: 2,
+            borderColor: '#F97316',
+          }}>
+            <Text style={{ color: '#F97316', textAlign: 'center', fontWeight: '700', fontSize: 14 }}>
+              {bulkProgressLabel}
+            </Text>
+          </View>
+        )}
+
+        {isProcessing && !isBulkMode && (
           <View
             style={{
               backgroundColor: palette.black,
@@ -457,7 +535,12 @@ export default function NewCourseAIScreen() {
       </ScrollView>
 
       {/* Overlay di caricamento con messaggi dinamici */}
-      <LoadingOverlay visible={isProcessing && !showAssessment} status={loadingStatus} />
+      <LoadingOverlay
+        visible={isProcessing && !showAssessment}
+        status={loadingStatus}
+        customSubtitle={isBulkMode ? bulkProgressLabel : undefined}
+      />
+
 
       {/* Skill Assessment Modal */}
       <Modal

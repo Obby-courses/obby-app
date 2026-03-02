@@ -131,10 +131,11 @@ serve(async (req: Request) => {
     let supportResource = null
     
     if (milestoneResult.requires_resource) {
-      const searchQuery = milestoneResult.search_query || `${milestoneResult.title} demonstration`
-      const recommendedType = milestoneResult.recommended_resource_type || 'video'
+      const hint = milestoneResult.practice_resource_hint || ''
+      const searchQuery = milestoneResult.search_query || `${milestoneResult.title} ${hint}`
+      const recommendedType = milestoneResult.recommended_resource_type || 'webpage'
 
-      console.log(`[SEARCH] Looking for support resource: "${searchQuery}" (Recommended: ${recommendedType})`)
+      console.log(`[SEARCH] Looking for support resource: "${searchQuery}" (Recommended: ${recommendedType}${hint ? `, Hint: ${hint}` : ''})`)
       
       try {
         const searchVideo = async () => {
@@ -256,7 +257,8 @@ serve(async (req: Request) => {
         target_config: {
           support_resource: supportResource,
           resource_id: resourceId,
-          pedagogical_summary: milestoneResult.summary
+          pedagogical_summary: milestoneResult.summary,
+          exercise_text: milestoneResult.exercise_text
         }
       }, { onConflict: 'phase_id' })
       .select().single()
