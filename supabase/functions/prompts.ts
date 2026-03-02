@@ -629,19 +629,24 @@ RULES:
 export const USER_MILESTONE_PROMPT = ({
   phaseTitle,
   phaseKeywords,
-  steps
+  steps,
+  availableTools
 }: {
   phaseTitle: string
   phaseKeywords: string[]
   steps: Array<{ title: string; description: string }>
+  availableTools?: string[]
 }) => {
   const keywordsStr = Array.isArray(phaseKeywords) ? phaseKeywords.join(", ") : phaseKeywords;
+  const toolsConstraint = availableTools && availableTools.length > 0
+    ? `\nTOOL CONSTRAINT: The milestone MUST be achievable using ONLY these tools the user has: ${availableTools.join(', ')}. Do NOT require tools not in this list.\n`
+    : '';
 
   return `
 PHASE CONTEXT:
 Title: ${phaseTitle}
 Keywords: ${keywordsStr}
-
+${toolsConstraint}
 STEPS COMPLETED IN THIS PHASE (SKILLS TAUGHT):
 ${steps.map((s, i) => `${i + 1}. ${s.title}: ${s.description}`).join('\n')}
 
@@ -753,6 +758,8 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
   domain: string
   prerequisiteGaps?: Array<{ gap: string; type: string; severity: string; reason: string }>
   priorKnowledge?: Array<{ title: string, description: string }>
+  missingTools?: string[]
+  toolStrategy?: 'adapt' | 'include_setup'
 }) => {
   const prerequisiteSection = params.prerequisiteGaps && params.prerequisiteGaps.length > 0
     ? `\nPREREQUISITE ANALYSIS (from Level 1 - BINDING):\nThe following knowledge gaps were identified. You MUST generate themes to cover CRITICAL gaps FIRST.\n${params.prerequisiteGaps.map(g => `- [${g.severity.toUpperCase()}] [${g.type}] ${g.gap}: ${g.reason}`).join('\n')}\n`
@@ -762,9 +769,19 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
     ? `\nPRIOR KNOWLEDGE (Already Mastered):\nThe learner has already completed these macro-phases and mastered their outcomes:\n${params.priorKnowledge.map((pk, i) => `${i+1}. ${pk.title}: ${pk.description}`).join('\n')}\n`
     : '';
 
+  // Tool strategy section
+  let toolSection = ''
+  if (params.missingTools && params.missingTools.length > 0) {
+    if (params.toolStrategy === 'adapt') {
+      toolSection = `\nTOOL CONSTRAINT (BINDING):\nThe learner does NOT have the following tools: ${params.missingTools.join(', ')}.\nYou MUST generate themes that use FREE or ALTERNATIVE tools only. Do NOT generate themes that require the missing tools.\nSuggest free alternatives where applicable (e.g. LMMS instead of Ableton, GIMP instead of Photoshop).\n`
+    } else if (params.toolStrategy === 'include_setup') {
+      toolSection = `\nTOOL SETUP REQUIRED (BINDING):\nThe learner does NOT have the following tools: ${params.missingTools.join(', ')}.\nYour FIRST theme MUST be about how to obtain/install/set up the missing tool(s). Only after that setup theme should you proceed with the main content themes.\nThe setup theme should help the learner get the tool for free or at low cost if possible.\n`
+    }
+  }
+
   const keywordsStr = Array.isArray(params.phaseKeywords) ? params.phaseKeywords.join(", ") : params.phaseKeywords;
 
-  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nKeywords: "${keywordsStr}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${priorSection}${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.${params.priorKnowledge?.length ? "\n**STRICT RULE**: Do NOT generate themes for skills already covered in 'PRIOR KNOWLEDGE'." : ""}`;
+  return `PHASE TO ANALYZE:\nTitle: "${params.phaseTitle}"\nKeywords: "${keywordsStr}"\n\nCOURSE CONTEXT:\nCourse Title: "${params.courseTitle}"\nDomain: ${params.domain}\n${priorSection}${toolSection}${prerequisiteSection}\nGenerate research themes for this phase following the instructions above.${params.priorKnowledge?.length ? "\n**STRICT RULE**: Do NOT generate themes for skills already covered in 'PRIOR KNOWLEDGE'." : ""}`;
 }
 
 // -------------------------------------------------------
@@ -1181,6 +1198,58 @@ Generate exactly 1 OBJECTIVE YES/NO question per macro-phase.
 
 USER GUIDANCE: "Se non sei sicuro, rispondi NO. È meglio ripassare che saltare basi importanti."
 
+Return ONLY valid JSON.`;
+}
+
+// -------------------------------------------------------
+// TOOL ASSESSMENT QUIZ
+// -------------------------------------------------------
+export const TOOL_ASSESSMENT_PROMPT = `Sei un esperto di corsi di apprendimento. Il tuo compito è analizzare un corso e identificare gli strumenti STRETTAMENTE INDISPENSABILI che l'utente deve avere per poter seguire il corso.
+
+REGOLE:
+- Identifica al massimo 3 strumenti (solo quelli VERAMENTE indispensabili, non opzionali).
+- Escludi strumenti universali: browser web, carta, penna, telefono, connessione internet.
+- Per ogni strumento genera una domanda oggettiva SI/NO verificabile dall'utente.
+- Se il corso non richiede strumenti speciali, restituisci tool_questions: [].
+- LINGUA: Rispondi ESCLUSIVAMENTE in ITALIANO.
+
+TIPO DI STRUMENTI:
+- software: applicazioni da installare (DAW, editor video, IDE, Photoshop...)
+- hardware: attrezzatura fisica specifica (chitarra, microfono, tavoletta grafica...)
+- physical: materiali o oggetti specifici (colori acrilici, forno per ceramica...)
+- account: abbonamenti o account a piattaforme a pagamento
+
+OUTPUT (JSON only):
+{
+  "tool_questions": [
+    {
+      "tool_name": "Nome esatto dello strumento",
+      "tool_type": "software | hardware | physical | account",
+      "question": "Domanda SI/NO oggettiva (es. Hai Ableton Live installato sul tuo computer?)",
+      "why_needed": "Spiegazione breve perché è necessario per questo corso",
+      "affects_phases_from": 1,
+      "free_alternative": "Alternativa gratuita se esiste, altrimenti null"
+    }
+  ]
+}`;
+
+export const USER_TOOL_ASSESSMENT_PROMPT = (params: {
+  courseTitle: string
+  macroPhases: Array<{ title: string; keywords: string[]; order_index: number }>
+}) => {
+  const phasesContext = params.macroPhases
+    .sort((a, b) => a.order_index - b.order_index)
+    .map(mp => `${mp.order_index}. "${mp.title}" — Keywords: ${mp.keywords.join(', ')}`)
+    .join('\n')
+
+  return `CORSO: "${params.courseTitle}"
+
+MACRO-FASI DEL PERCORSO:
+${phasesContext}
+
+TASK:
+Analizza il corso e identifica al massimo 3 strumenti STRETTAMENTE INDISPENSABILI per seguirlo.
+Se il corso non richiede strumenti speciali, restituisci tool_questions: [].
 Return ONLY valid JSON.`;
 }
 

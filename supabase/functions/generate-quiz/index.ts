@@ -2,7 +2,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import {
     QUIZ_GENERATOR,
-    USER_QUIZ_PROMPT
+    TOOL_ASSESSMENT_PROMPT,
+    USER_QUIZ_PROMPT,
+    USER_TOOL_ASSESSMENT_PROMPT
 } from '../prompts.ts'
 
 const corsHeaders = {
@@ -36,8 +38,11 @@ serve(async (req: Request) => {
       return await handleSkillAssessment({ courseId, courseTitle, macroPhases, GROQ_KEY })
     }
 
+    if (quizType === 'tool_assessment') {
+      return await handleToolAssessment({ courseId, courseTitle, macroPhases, GROQ_KEY })
+    }
+
     // Future quiz types can be added here:
-    // if (quizType === 'tool_preferences') { ... }
     // if (quizType === 'learning_style') { ... }
 
     return new Response(
@@ -118,6 +123,51 @@ async function handleSkillAssessment({ courseId, courseTitle, macroPhases, GROQ_
     success: true,
     quizType: 'skill_assessment',
     questions: enrichedQuestions
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  })
+}
+
+/* ========== QUIZ TYPE: TOOL ASSESSMENT ========== */
+async function handleToolAssessment({ courseId, courseTitle, macroPhases, GROQ_KEY }: {
+  courseId: string
+  courseTitle: string
+  macroPhases: Array<{ id: string; title: string; keywords: string[]; order_index: number }>
+  GROQ_KEY: string
+}) {
+  console.log(`🔧 Generating tool assessment for "${courseTitle}" with ${macroPhases.length} macro-phases`)
+
+  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: TOOL_ASSESSMENT_PROMPT },
+        {
+          role: 'user',
+          content: USER_TOOL_ASSESSMENT_PROMPT({
+            courseTitle,
+            macroPhases
+          })
+        }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    }),
+  })
+
+  if (!groqRes.ok) throw new Error(`Groq Error: ${groqRes.status}`)
+  const groqData = await groqRes.json()
+  const result = JSON.parse(groqData.choices?.[0]?.message?.content || '{}')
+
+  const toolQuestions = result.tool_questions || []
+  console.log(`✅ Generated ${toolQuestions.length} tool questions`)
+
+  return new Response(JSON.stringify({
+    success: true,
+    quizType: 'tool_assessment',
+    tool_questions: toolQuestions
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" }
   })

@@ -252,7 +252,10 @@ serve(async (req: Request) => {
       courseDescription,
       preview,
       stepsToSave,
-      priorKnowledge
+      priorKnowledge,
+      toolStrategy,
+      missingTools,
+      availableTools
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -453,7 +456,9 @@ serve(async (req: Request) => {
               courseTitle: finalCourseTitle,
               domain: detectDomain(finalCourseTitle),
               prerequisiteGaps: prerequisiteGaps.length > 0 ? prerequisiteGaps : undefined,
-              priorKnowledge
+              priorKnowledge,
+              missingTools: missingTools && missingTools.length > 0 ? missingTools : undefined,
+              toolStrategy: toolStrategy || undefined
             })
           }
         ],

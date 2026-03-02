@@ -1,5 +1,6 @@
 import LoadingOverlay from '@/components/LoadingOverlay'
 import SkillAssessment, { AssessmentQuestion } from '@/components/SkillAssessment'
+import ToolAssessment, { ToolAssessmentResult, ToolQuestion } from '@/components/ToolAssessment'
 import { LoadingStatus } from '@/lib/loadingMessages'
 import { supabase } from '@/lib/supabase'
 import { palette, radius, spacing, typography } from '@/lib/theme'
@@ -44,6 +45,11 @@ export default function NewCourseAIScreen() {
   const [assessmentQuestions, setAssessmentQuestions] = useState<AssessmentQuestion[]>([])
   const [showAssessment, setShowAssessment] = useState(false)
   const assessmentResolveRef = useRef<((startIndex: number) => void) | null>(null)
+
+  // Tool Assessment state
+  const [toolQuestions, setToolQuestions] = useState<ToolQuestion[]>([])
+  const [showToolAssessment, setShowToolAssessment] = useState(false)
+  const toolAssessmentResolveRef = useRef<((result: ToolAssessmentResult) => void) | null>(null)
 
   // Fade-in on mount
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -249,6 +255,37 @@ export default function NewCourseAIScreen() {
         console.warn('⚠️ Assessment error (non-blocking):', quizErr.message)
       }
 
+      /* STEP 1.6 — TOOL ASSESSMENT */
+      let toolResult: ToolAssessmentResult | null = null
+      try {
+        const toolRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-quiz`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+          body: JSON.stringify({
+            quizType: 'tool_assessment',
+            courseId,
+            courseTitle: courseData.title,
+            macroPhases: mPhases.map((mp: any) => ({ id: mp.id, title: mp.title, keywords: mp.keywords || [], order_index: mp.order_index })),
+          }),
+        })
+        const toolData = await toolRes.json()
+
+        if (toolData.success && toolData.tool_questions?.length > 0) {
+          setToolQuestions(toolData.tool_questions)
+          setShowToolAssessment(true)
+
+          toolResult = await new Promise<ToolAssessmentResult>((resolve) => {
+            toolAssessmentResolveRef.current = resolve
+          })
+
+          setShowToolAssessment(false)
+        } else {
+          console.log('✅ Nessuno strumento speciale richiesto per questo corso')
+        }
+      } catch (toolErr: any) {
+        console.warn('⚠️ Tool assessment error (non-blocking):', toolErr.message)
+      }
+
       /* Identifica la prima fase dalla macro di partenza */
       const targetMacro = mPhases[startMacroIndex]
       const targetPhase = targetMacro?.phases?.[0]
@@ -271,7 +308,10 @@ export default function NewCourseAIScreen() {
           searchMode,
           primaryLanguage,
           secondaryLanguages,
-          priorKnowledge: mPhases.slice(0, startMacroIndex).map((mp: any) => ({ title: mp.title, description: mp.description, keywords: mp.keywords }))
+          priorKnowledge: mPhases.slice(0, startMacroIndex).map((mp: any) => ({ title: mp.title, description: mp.description, keywords: mp.keywords })),
+          toolStrategy: toolResult?.toolStrategy !== 'none' ? toolResult?.toolStrategy : undefined,
+          missingTools: toolResult?.missingTools,
+          availableTools: toolResult?.availableTools,
         }),
       })
 
@@ -554,6 +594,23 @@ export default function NewCourseAIScreen() {
             if (assessmentResolveRef.current) {
               assessmentResolveRef.current(startIndex)
               assessmentResolveRef.current = null
+            }
+          }}
+        />
+      </Modal>
+
+      {/* Tool Assessment Modal */}
+      <Modal
+        visible={showToolAssessment}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <ToolAssessment
+          toolQuestions={toolQuestions}
+          onComplete={(result) => {
+            if (toolAssessmentResolveRef.current) {
+              toolAssessmentResolveRef.current(result)
+              toolAssessmentResolveRef.current = null
             }
           }}
         />

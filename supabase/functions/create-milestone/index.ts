@@ -26,7 +26,8 @@ serve(async (req: Request) => {
       phaseKeywords,
       orderIndex,
       primaryLanguage: bodyPrimaryLang,
-      secondaryLanguages: bodySecondaryLangs
+      secondaryLanguages: bodySecondaryLangs,
+      availableTools
     } = body
 
     if (!courseId || !phaseId || !phaseTitle) {
@@ -109,7 +110,8 @@ serve(async (req: Request) => {
               steps: stepsToUse.map((s:any) => ({
                   title: s.title,
                   description: s.description || s.learning_objective || "" 
-              }))
+              })),
+              availableTools: availableTools && availableTools.length > 0 ? availableTools : undefined
             })
           },
         ],
