@@ -331,21 +331,53 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     if (extracted) finalThumbnail = extracted
   }
   
-  // Categorize resource via LLM before saving
+  // 1. Fetch RAW summary from API (if YouTube)
+  let rawSummary = ""
+  if (resource.type === 'video') {
+    const vId = cleanUrl.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/)?.[1]
+    if (vId) {
+      console.log(`[RAW-SUM] Fetching raw summary for video ${vId}...`)
+      try {
+        const RAPID_API_KEY = Deno.env.get("RAPID_API_KEY")
+        const sumRes = await fetch(`https://youtube-summarizer2.p.rapidapi.com/summarize?id=${vId}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-host': 'youtube-summarizer2.p.rapidapi.com',
+            'x-rapidapi-key': RAPID_API_KEY || ''
+          }
+        })
+        if (sumRes.ok) {
+          const sumData = await sumRes.json()
+          rawSummary = sumData.summary || sumData.translated_summary || sumData.text || sumData.translated_transcript || ""
+          if (rawSummary) console.log(`[RAW-SUM] Success: ${rawSummary.length} chars`)
+        }
+      } catch (sumErr) {
+        console.warn(`[RAW-SUM] Failed for ${vId}:`, sumErr.message)
+      }
+    }
+  }
+
+  // FIX 4: Fallback to full description if raw summary is absent OR truncated
+  const isTruncated = !rawSummary || rawSummary.trimEnd().endsWith('...') || rawSummary.length < 200
+  if (isTruncated && rawSummary) console.warn(`[RAW-SUM] Summary appears truncated (${rawSummary.length} chars). Using full description.`)
+  const finalSummary = (!isTruncated ? rawSummary : null) || resource.description
+
+  // Categorize resource via LLM for technical metadata ONLY
   const metadata = await categorizeResource({
     title: resource.title,
     description: resource.description || '',
     type: resource.type
   })
 
-  // Create new resource with categorization metadata
+  // Create new resource
   const { data: newResource, error: createError } = await supabase
     .from('resources')
     .insert({
       title: resource.title,
       url: cleanUrl,
       thumbnail_url: finalThumbnail,
-      summary: resource.description,
+      summary: finalSummary, // RAW SUMMARY
+      raw_summary: rawSummary || null,
       type: resource.type,
       domain: metadata.domain,
       subdomain: metadata.subdomain,

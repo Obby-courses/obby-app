@@ -192,21 +192,54 @@ async function getOrCreateResource(
     }
   }
   
-  // Categorize resource via LLM before saving
+  // 1. Fetch RAW summary from API (if YouTube)
+  let rawSummary = ""
+  if (resource.type === 'video') {
+    const vId = cleanUrl.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/)?.[1]
+    if (vId) {
+      console.log(`[RAW-SUM] Fetching raw summary for video ${vId}...`)
+      try {
+        const RAPID_API_KEY = Deno.env.get("RAPID_API_KEY")
+        const sumRes = await fetch(`https://youtube-summarizer2.p.rapidapi.com/summarize?id=${vId}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-host': 'youtube-summarizer2.p.rapidapi.com',
+            'x-rapidapi-key': RAPID_API_KEY || ''
+          }
+        })
+        if (sumRes.ok) {
+          const sumData = await sumRes.json()
+          rawSummary = sumData.summary || sumData.translated_summary || sumData.text || sumData.translated_transcript || ""
+          if (rawSummary) console.log(`[RAW-SUM] Success: ${rawSummary.length} chars`)
+        }
+      } catch (sumErr) {
+        console.warn(`[RAW-SUM] Failed for ${vId}:`, sumErr.message)
+      }
+    }
+  }
+
+  // FIX 4: Fallback to full description if raw summary is absent OR truncated
+  // Truncation signals: ends with '...' OR suspiciously short (<200 chars)
+  const isTruncated = !rawSummary || rawSummary.trimEnd().endsWith('...') || rawSummary.length < 200
+  if (isTruncated && rawSummary) console.warn(`[RAW-SUM] Summary appears truncated (${rawSummary.length} chars, ends with '...': ${rawSummary.trimEnd().endsWith('...')}). Using full description.`)
+  const finalSummary = (!isTruncated ? rawSummary : null) || resource.description
+
+  // Categorize resource via LLM for technical metadata ONLY
   const metadata = await categorizeResource({
     title: resource.title,
     description: resource.description,
     type: resource.type
   })
 
-  // Create new resource with categorization metadata
+  // Create new resource
   const { data: newResource, error: createError } = await supabase
     .from('resources')
     .insert({
       title: resource.title,
       url: cleanUrl,
       thumbnail_url: finalThumbnail,
-      summary: resource.description,
+      summary: finalSummary, // RAW SUMMARY
+      raw_summary: rawSummary || null,
       type: resource.type,
       domain: metadata.domain,
       subdomain: metadata.subdomain,
@@ -665,13 +698,15 @@ serve(async (req: Request) => {
             const compResults: ResourceCandidate[] = []
 
             try {
-              // Search video
+              // Search video — FIX 3: pass course_title and language for context-aware search
               if (insertion.search_query_video) {
+                // Build a query that anchors to the course's target language/subject
+                const contextualQuery = `${insertion.search_query_video} ${finalCourseTitle}`
                 const res = await fetch(`${SUPABASE_URL}/functions/v1/${SEARCH_RESOURCES_FN}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
                   body: JSON.stringify({
-                    step_title: insertion.search_query_video,
+                    step_title: contextualQuery,
                     step_description: insertion.rationale,
                     course_title: finalCourseTitle,
                     phase_title: phaseTitle
@@ -724,18 +759,26 @@ serve(async (req: Request) => {
           const compensatoryResults = await Promise.all(compensatoryPromises)
 
           // Build prerequisite steps from compensatory results
+          // FIX 2: track URLs already in the pool to avoid adding duplicate videos
+          const poolUrls = new Set<string>(qualityResourcesPool.map(r => r.url.trim().toLowerCase()))
           const prerequisiteSteps: any[] = []
           for (const { insertion, resources } of compensatoryResults) {
             if (resources.length > 0) {
-              const bestResource = resources[0]
-              qualityResourcesPool = [...qualityResourcesPool, ...resources]
+              // Pick the first resource whose URL is not already in the pool
+              const bestResource = resources.find(r => !poolUrls.has(r.url.trim().toLowerCase()))
+              if (!bestResource) {
+                console.warn(`[DEDUP-PREREQ] All compensatory resources for '${insertion.new_step_title}' are duplicates — skipping`)
+                continue
+              }
+              poolUrls.add(bestResource.url.trim().toLowerCase())
+              qualityResourcesPool = [...qualityResourcesPool, bestResource]
 
               prerequisiteSteps.push({
                 resource_id: bestResource.id,
                 step_title: insertion.new_step_title,
+                // FIX 1: store only learning_objective — no internal 'Prerequisite insertion' text
                 learning_objective: insertion.rationale,
-                order: insertion.insert_before_step_index - 0.5, // Will be re-ordered below
-                rationale: `Prerequisite insertion: ${insertion.rationale}`
+                order: insertion.insert_before_step_index - 0.5
               })
             }
           }
@@ -784,35 +827,33 @@ serve(async (req: Request) => {
     }
 
     /* ======================================================
-       PHASE 4: BATCH SAVE (TRANSACTIONAL-LIKE)
+       PHASE 4: BATCH SAVE (PARALLEL)
        ====================================================== */
     console.log("💾 PHASE 4: SAVING")
 
-    const createdSteps = []
-    
-    let globalOrderOffset = (allStepsData || []).filter((s:any) => s.phase_id === phaseId).length
+    let globalOrderOffset = (allStepsData || []).filter((s: any) => s.phase_id === phaseId).length
 
-    for (const plan of stepsWithResources) {
+    const createdStepsResults = await Promise.all(stepsWithResources.map(async (plan) => {
         const resourceCandidate = plan.resource
-        
         if (!resourceCandidate) {
             console.warn(`[SAVE SKIP] Resource data not found for step '${plan.step_title}'`)
-            continue
+            return null
         }
 
         try {
             // 1. Get or Create Resource
             const { id: resourceId } = await getOrCreateResource(supabase, resourceCandidate)
 
-            // 2. Create Step
+            // 2. Insert Step
             const { data: savedStep, error: stepErr } = await supabase
                 .from('steps')
                 .insert({
                     course_id: courseId,
                     phase_id: phaseId,
-                    order_index: globalOrderOffset + plan.order, // Append relative to existing
+                    order_index: globalOrderOffset + plan.order,
                     title: plan.step_title,
-                    description: plan.learning_objective + " " + (plan.rationale || ""),
+                    // FIX 1: use only learning_objective — rationale is internal and must not be shown to users
+                    description: plan.learning_objective || "",
                     completed: false,
                     resource_id: resourceId
                 })
@@ -820,16 +861,15 @@ serve(async (req: Request) => {
                 .single()
 
             if (stepErr) throw stepErr
-            
-            createdSteps.push(savedStep)
-            console.log(`✅ Created Step: ${savedStep.title}`)
-            
-        } catch (saveErr) {
-            console.error(`[SAVE ERROR] Failed to save step '${plan.step_title}':`, saveErr)
-            // Continue with others? Or break? 
-            // We continue to save as many as possible in this robust mode
+            console.log(`✅ Saved step: ${savedStep.title}`)
+            return savedStep
+        } catch (err) {
+            console.error(`[SAVE ERROR] Failed to save step '${plan.step_title}':`, err)
+            return null
         }
-    }
+    }))
+
+    const createdSteps = createdStepsResults.filter(s => s !== null)
 
     // TRIGGER DEDICATED MILESTONE GENERATION (Post-Bulk Save)
     try {
@@ -848,7 +888,8 @@ serve(async (req: Request) => {
             phaseId,
             phaseTitle,
             phaseKeywords: effectiveKeywords,
-            steps: createdSteps // Pass the newly created steps as context
+            steps: createdSteps, // Pass the newly created steps as context
+            availableTools: availableTools // Pass available tools for constraint check
           })
         })
         

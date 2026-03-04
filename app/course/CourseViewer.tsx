@@ -48,6 +48,7 @@ type Step = {
     course_id?: string
     resource: Resource | null
     created_at?: string
+    status_changed_at?: string | null
     isMilestone?: boolean
     global_index: number
 }
@@ -178,6 +179,7 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                         status,
                         order_index,
                         created_at,
+                        status_changed_at,
                         phase_id,
                         course_id,
                         resource_id,
@@ -262,10 +264,32 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
     function recomputeMapContent(allSteps: Step[], allMilestones: Milestone[], currentPhases: Phase[], currentMacroPhases: any[]) {
         const content: any[] = []
 
+        // 1. Identify active macro: find macro of the first incomplete step, or of any step if all done
+        const firstIncompleteStep = allSteps.find(s => !s.completed)
+        const relevantStep = firstIncompleteStep || allSteps[0]
+        const activePhaseId = relevantStep?.phase_id
+        const activePhase = currentPhases.find(p => p.id === activePhaseId)
+        const activeMacro = currentMacroPhases.find(m => m.id === activePhase?.macro_phase_id)
+        // Fallback: if no match, use the macro of the first phase in DB
+        const firstDbPhase = currentPhases[0]
+        const fallbackMacro = firstDbPhase ? currentMacroPhases.find(m => m.id === firstDbPhase.macro_phase_id) : null
+        const activeMacroOrder = (activeMacro || fallbackMacro)?.order_index || 1
+
         // Sort all macro phases
         const sortedMacros = [...currentMacroPhases].sort((a, b) => a.order_index - b.order_index)
 
         sortedMacros.forEach(macro => {
+            // Find phases for this macro in DB
+            const dbPhasesForMacro = currentPhases
+                .filter(p => p.macro_phase_id === macro.id)
+                .sort((a, b) => a.order_index - b.order_index)
+
+            // ⚠️ SKIP macro headers entirely if this macro has no phases in DB
+            // AND it's at or before the active macro (already "skipped" by the user)
+            if (dbPhasesForMacro.length === 0 && macro.order_index <= activeMacroOrder) {
+                return
+            }
+
             // Add a Header for the Macro Phase
             content.push({
                 id: `macro-${macro.id}`,
@@ -273,12 +297,9 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                 isMacroHeader: true
             })
 
-            // Find phases for this macro
-            const macroPhases = currentPhases
-                .filter(p => p.macro_phase_id === macro.id)
-                .sort((a, b) => a.order_index - b.order_index)
-
-            macroPhases.forEach(p => {
+            // Render phases only if they exist in DB OR it's a future macro we want to show as "coming soon"
+            // For now, only show real phases (JIT created) and placeholders for them
+            dbPhasesForMacro.forEach(p => {
                 const phaseSteps = allSteps.filter(s => s.phase_id === p.id)
 
                 if (phaseSteps.length > 0) {
@@ -286,7 +307,8 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                     phaseSteps.sort((a, b) => a.order_index - b.order_index)
                     content.push(...phaseSteps)
                 } else {
-                    // Future/Virtual phase - Show placeholders
+                    // This phase exists in DB but has no steps yet (JIT created but not generated)
+                    // Show placeholders
                     const seed = p.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
                     const numPlaceholders = 3 + (seed % 3)
 
@@ -339,6 +361,7 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
         const isCompletedBool = (newStatus === 'completed' || newStatus === 'skipped')
 
         // 1. Optimistic Local Update
+        const nowIso = new Date().toISOString()
         setSteps((prev) => {
             const updated = prev.map((s) =>
                 s.id === stepId
@@ -346,6 +369,7 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                         ...s,
                         status: newStatus,
                         completed: isCompletedBool,
+                        status_changed_at: newStatus !== 'pending' ? nowIso : null,
                         ...(newStatus !== 'skipped' && { skip_reason: null })
                     }
                     : s
@@ -362,12 +386,14 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
         // 2. Persistent Update
         try {
             const databaseStatus = newStatus === 'pending' ? null : newStatus;
+            const now = new Date().toISOString()
 
             const { error } = await supabase
                 .from('steps')
                 .update({
                     status: databaseStatus,
                     completed: isCompletedBool,
+                    status_changed_at: newStatus !== 'pending' ? now : null,
                     ...(newStatus !== 'skipped' && { skip_reason: null })
                 })
                 .eq('id', stepId)
@@ -391,7 +417,65 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
 
     const referenceDate = lastCompletedStep?.created_at || courseCreatedAt
 
-    /* ---------------- RENDER ---------------- */
+    /* ---------------- STREAK CALCULATION ---------------- */
+    /**
+     * Returns: 'fire' | 'fire-grey' | 'none'
+     * - 'fire': step completed in time (🔥 orange)
+     * - 'fire-grey': step skipped in time (🔥 grey)
+     * - 'none': step pending, or acted upon late (streak broken for this step)
+     *
+     * Streak rule: a step breaks the streak ONLY if it's pending AND its deadline
+     * has passed. Any step after a broken step also shows 'none'.
+     */
+    const computeStreakStatus = (allSteps: Step[]): Map<string, 'fire' | 'fire-grey' | 'none'> => {
+        const result = new Map<string, 'fire' | 'fire-grey' | 'none'>()
+        const courseStart = new Date(courseCreatedAt).getTime()
+        let streakBroken = false
+
+        for (let i = 0; i < allSteps.length; i++) {
+            const step = allSteps[i]
+            const deadlineMs = courseStart + (i + 1) * daysPerStep * 24 * 60 * 60 * 1000
+
+            if (streakBroken) {
+                result.set(step.id, 'none')
+                continue
+            }
+
+            if (step.status === 'completed' && step.status_changed_at) {
+                const changedAt = new Date(step.status_changed_at).getTime()
+                if (changedAt <= deadlineMs) {
+                    result.set(step.id, 'fire')
+                } else {
+                    // Completed but late — breaks streak
+                    result.set(step.id, 'none')
+                    streakBroken = true
+                }
+            } else if (step.status === 'skipped' && step.status_changed_at) {
+                const changedAt = new Date(step.status_changed_at).getTime()
+                if (changedAt <= deadlineMs) {
+                    result.set(step.id, 'fire-grey')
+                } else {
+                    result.set(step.id, 'none')
+                    streakBroken = true
+                }
+            } else if (!step.completed) {
+                // Pending step past its deadline => streak breaks from here
+                if (Date.now() > deadlineMs) {
+                    result.set(step.id, 'none')
+                    streakBroken = true
+                } else {
+                    result.set(step.id, 'none')
+                }
+            } else {
+                result.set(step.id, 'none')
+            }
+        }
+
+        return result
+    }
+
+    const streakMap = computeStreakStatus(steps)
+
 
     const renderItem = ({ item, index }: { item: any, index: number }) => {
         if (item.isMacroHeader) {
@@ -475,6 +559,7 @@ export default function CourseViewer({ courseId, hideHeader, isActive }: CourseV
                     isPlaceholder={isPlaceholder}
                     remainingProgress={remainingProgress}
                     courseColor={courseColor}
+                    streakStatus={isPlaceholder ? 'none' : (streakMap.get(step.id) ?? 'none')}
                     onPress={() => {
                         if (!isLocked && !isPlaceholder) setSelectedStep(step)
                     }}

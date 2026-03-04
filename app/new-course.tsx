@@ -139,25 +139,8 @@ export default function NewCourseAIScreen() {
               console.log(`✅ ${stepsCreatedInThisPhase} step creati per "${phase.title}"`)
             }
           } catch (stepErr: any) {
-            // Silently continue
+            console.warn(`⚠️ Errore generazione step per fase ${phase.title}:`, stepErr.message)
           }
-
-          /* Resources */
-          if (stepsCreatedInThisPhase > 0) {
-            setBulkProgressLabel(
-              `🔗 Recupero Risorse...\n${phase.title}`
-            )
-            try {
-              await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-                body: JSON.stringify({ phaseId: phase.id, primaryLanguage, secondaryLanguages }),
-              })
-            } catch (resErr: any) {
-              // Silently continue
-            }
-          }
-
         }
       }
 
@@ -256,7 +239,13 @@ export default function NewCourseAIScreen() {
       }
 
       /* STEP 1.6 — TOOL ASSESSMENT */
-      let toolResult: ToolAssessmentResult | null = null
+      let toolResult: ToolAssessmentResult | null = {
+        availableTools: profile?.tools || [],
+        missingTools: [],
+        toolStrategy: 'none',
+        perToolStrategy: {}
+      }
+
       try {
         const toolRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-quiz`, {
           method: 'POST',
@@ -271,14 +260,75 @@ export default function NewCourseAIScreen() {
         const toolData = await toolRes.json()
 
         if (toolData.success && toolData.tool_questions?.length > 0) {
-          setToolQuestions(toolData.tool_questions)
-          setShowToolAssessment(true)
+          console.log(`🔧 AI ha identificato ${toolData.tool_questions.length} strumenti potenzialmente necessari.`)
 
-          toolResult = await new Promise<ToolAssessmentResult>((resolve) => {
-            toolAssessmentResolveRef.current = resolve
+          // SALVATAGGIO: Aggiorniamo le macro-fasi nel DB con i required_tools identificati dall'AI
+          // Nota: affects_phases_from è 1-based (dal prompt), quindi sottraiamo 1 per l'indice array
+          const toolMap: Record<number, string[]> = {}
+          toolData.tool_questions.forEach((q: ToolQuestion) => {
+            const idx = Math.max(0, q.affects_phases_from - 1)
+            if (!toolMap[idx]) toolMap[idx] = []
+            if (!toolMap[idx].includes(q.tool_name)) {
+              toolMap[idx].push(q.tool_name)
+            }
           })
 
-          setShowToolAssessment(false)
+          // Aggiorniamo RLS permettendo, queste chiamate salvano i tool necessari per ogni macro-fase
+          await Promise.all(mPhases.map(async (mp: any, idx: number) => {
+            const toolsForThisPhase = toolMap[idx] || []
+            if (toolsForThisPhase.length > 0) {
+              await supabase.from('macro_phases').update({ required_tools: toolsForThisPhase }).eq('id', mp.id)
+            }
+          }))
+
+          // FILTRAGGIO: escludiamo i tool che l'utente ha già nel profilo
+          const filteredQuestions = toolData.tool_questions.filter((q: ToolQuestion) =>
+            !profile?.tools?.some(t => t.toLowerCase() === q.tool_name.toLowerCase())
+          )
+
+          if (filteredQuestions.length > 0) {
+            console.log(`🤔 Chiedendo all'utente conferma per ${filteredQuestions.length} strumenti mancanti.`)
+            setToolQuestions(filteredQuestions)
+            setShowToolAssessment(true)
+
+            const selection = await new Promise<ToolAssessmentResult>((resolve) => {
+              toolAssessmentResolveRef.current = resolve
+            })
+
+            // Uniamo i tool pre-esistenti con quelli confermati nella sessione
+            toolResult = {
+              availableTools: Array.from(new Set([...toolResult.availableTools, ...selection.availableTools])),
+              missingTools: selection.missingTools,
+              toolStrategy: selection.toolStrategy,
+              perToolStrategy: selection.perToolStrategy
+            }
+
+            setShowToolAssessment(false)
+
+            // SALVATAGGIO NEL PROFILO: Aggiungiamo i nuovi tool confermati al profilo utente
+            if (selection.availableTools.length > 0) {
+              const currentTools = profile?.tools || []
+              const updatedTools = Array.from(new Set([...currentTools, ...selection.availableTools]))
+
+              const { error: profileUpdateErr } = await supabase
+                .from('profiles')
+                .update({ tools: updatedTools })
+                .eq('id', user?.id)
+
+              if (profileUpdateErr) {
+                console.error('❌ Errore aggiornamento strumenti nel profilo:', profileUpdateErr.message)
+              } else {
+                console.log(`✅ Profilo aggiornato con ${selection.availableTools.length} nuovi strumenti.`)
+              }
+            }
+          } else {
+            console.log('✅ Tutti gli strumenti necessari sono già nel profilo utente')
+            // Se sono tutti nel profilo, sono TUTTI "available"
+            toolResult.availableTools = Array.from(new Set([
+              ...toolResult.availableTools,
+              ...toolData.tool_questions.map((q: ToolQuestion) => q.tool_name)
+            ]))
+          }
         } else {
           console.log('✅ Nessuno strumento speciale richiesto per questo corso')
         }
@@ -286,11 +336,34 @@ export default function NewCourseAIScreen() {
         console.warn('⚠️ Tool assessment error (non-blocking):', toolErr.message)
       }
 
-      /* Identifica la prima fase dalla macro di partenza */
+      /* Identifica la macro di partenza e inserisci le sue fasi JIT */
       const targetMacro = mPhases[startMacroIndex]
-      const targetPhase = targetMacro?.phases?.[0]
+      if (!targetMacro) throw new Error('Macro-fase di partenza non trovata')
 
-      if (!targetPhase?.id) throw new Error('Nessuna fase trovata nel percorso generato')
+      console.log(`🎯 PARTENZA: Macro ${startMacroIndex + 1} — "${targetMacro.title}" (${targetMacro.phases?.length || 0} fasi da inserire)`)
+
+      const phasesToInsert = targetMacro.phases.map((p: any, pi: number) => ({
+        course_id: courseId,
+        macro_phase_id: targetMacro.id,
+        title: p.title,
+        keywords: p.keywords || [],
+        order_index: (typeof p.order_index === 'number' ? p.order_index : pi + 1)
+      }))
+
+      console.log(`🗂️ Fasi:`, phasesToInsert.map((p: { order_index: number, title: string }) => `${p.order_index}. ${p.title}`).join(' | '))
+
+      const { data: insertedPhases, error: phasesInsertErr } = await supabase
+        .from('phases')
+        .insert(phasesToInsert)
+        .select()
+
+      if (phasesInsertErr || !insertedPhases?.length) {
+        throw new Error(`Errore salvataggio fasi JIT: ${phasesInsertErr?.message || 'Nessuna fase creata'}`)
+      }
+
+      // La prima fase della macro scelta sarà quella attiva
+      const targetPhase = insertedPhases.sort((a, b) => a.order_index - b.order_index)[0]
+      const targetPhaseAIContext = targetMacro.phases.find((p: any) => p.order_index === targetPhase.order_index)
 
       /* STEP 2 — STEPS per la prima fase */
       setLoadingStatus('GENERATING_STEPS')
@@ -302,7 +375,7 @@ export default function NewCourseAIScreen() {
           courseId,
           phaseId: targetPhase.id,
           phaseTitle: targetPhase.title,
-          phaseDescription: targetPhase.description,
+          phaseDescription: targetPhaseAIContext?.description || targetPhase.title,
           courseTitle: courseData.title,
           courseDescription: courseData.description,
           searchMode,
@@ -316,14 +389,8 @@ export default function NewCourseAIScreen() {
       })
 
       const stepsData = await stepsRes.json()
-      if (!stepsRes.ok || !stepsData.success) throw new Error(stepsData.error || 'Errore Step 2')
-
-      /* STEP 3 — RESOURCES */
-      await fetch(`${SUPABASE_URL}/functions/v1/generate-resources-for-steps`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ phaseId: targetPhase.id, primaryLanguage, secondaryLanguages }),
-      })
+      if (!stepsRes.ok || !stepsData.success) throw new Error(stepsData.error || 'Errore generazione step')
+      console.log(`✅ ${stepsData.created_steps_count || 0} step creati per la prima fase: ${targetPhase.title}`)
 
       /* FINALLY: PUBLISH COURSE */
       await supabase.from('courses').update({ is_published: true }).eq('id', courseId)

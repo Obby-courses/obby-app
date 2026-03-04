@@ -41,11 +41,13 @@ export default function CourseScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadAllCourses(true)
-    }, [currentIndex])
+      // We only load all courses once on mount or when the screen comes back into focus
+      // but we shouldn't reset the currentIndex if it's already set to something meaningful
+      loadAllCourses(courses.length === 0)
+    }, [])
   )
 
-  async function loadAllCourses(isRefresh = false) {
+  async function loadAllCourses(isInitial = false) {
     const { data } = await supabase
       .from('courses')
       .select('id, title, color_index')
@@ -54,19 +56,24 @@ export default function CourseScreen() {
     if (data) {
       setCourses(data)
 
-      let startIdx = 0
-      if (initialCourseId && initialCourseId !== 'any') {
-        const idx = data.findIndex(c => c.id === initialCourseId)
-        if (idx !== -1) startIdx = idx
-      }
+      if (isInitial) {
+        let startIdx = 0
+        if (initialCourseId && initialCourseId !== 'any') {
+          const idx = data.findIndex(c => c.id === initialCourseId)
+          if (idx !== -1) startIdx = idx
+        }
 
-      setCurrentIndex(startIdx)
-      setDisplayTitle(data[startIdx]?.title || '')
+        setCurrentIndex(startIdx)
+        setDisplayTitle(data[startIdx]?.title || '')
 
-      if (!isRefresh) {
         setTimeout(() => {
           flatListRef.current?.scrollToIndex({ index: startIdx, animated: false })
         }, 0)
+      } else {
+        // On refresh/focus return, ensure title is sync'd with current index
+        if (data[currentIndex]) {
+          setDisplayTitle(data[currentIndex].title)
+        }
       }
     }
     setLoading(false)
@@ -202,7 +209,12 @@ export default function CourseScreen() {
 
         <Animated.View style={[{ flex: 1, marginHorizontal: 15 }, animatedTitleStyle]}>
           <Text style={{ fontSize: 12, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Il tuo percorso</Text>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: colors.primary }} numberOfLines={1}>
+          <Text
+            style={{ fontSize: 20, fontWeight: '900', color: colors.primary, lineHeight: 24 }}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
             {displayTitle}
           </Text>
         </Animated.View>

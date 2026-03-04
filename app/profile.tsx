@@ -3,12 +3,13 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { Stack, useRouter } from 'expo-router'
 import React, { useEffect, useRef, useState } from 'react'
 import {
+    Alert,
     Animated,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
@@ -55,6 +56,7 @@ export default function ProfileScreen() {
         setLangChanged(true)
     }
 
+
     async function saveLanguages() {
         if (!user) return
         setSaving(true)
@@ -89,6 +91,39 @@ export default function ProfileScreen() {
         }).start(() => {
             signOut().then(() => router.replace('/login'))
         })
+    }
+
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'Elimina Account',
+            'Sei sicuro di voler eliminare il tuo account? Questa azione è irreversibile e perderai tutti i tuoi corsi e progressi.',
+            [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                    text: 'Elimina',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setSaving(true)
+                        try {
+                            const { data: { session } } = await supabase.auth.getSession()
+                            const { data, error } = await supabase.functions.invoke('delete-user', {
+                                headers: {
+                                    Authorization: `Bearer ${session?.access_token}`
+                                }
+                            })
+                            if (error) throw error
+
+                            Alert.alert('Successo', 'Account eliminato con successo')
+                            handleSignOut()
+                        } catch (err: any) {
+                            Alert.alert('Errore', err.message || 'Errore durante l\'eliminazione dell\'account')
+                        } finally {
+                            setSaving(false)
+                        }
+                    }
+                }
+            ]
+        )
     }
 
     if (loading) return null
@@ -175,6 +210,7 @@ export default function ProfileScreen() {
                     )}
                 </View>
 
+
                 {/* ACCOUNT */}
                 <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Account</Text>
                 <Pressable style={styles.menuItem} onPress={handleSignOut}>
@@ -182,6 +218,14 @@ export default function ProfileScreen() {
                         <Ionicons name="log-out" size={20} color="#EF4444" />
                     </View>
                     <Text style={[styles.menuText, { color: '#EF4444' }]}>Esci dall'account</Text>
+                    <Ionicons name="chevron-forward" size={18} color={palette.gray} />
+                </Pressable>
+
+                <Pressable style={styles.menuItem} onPress={handleDeleteAccount} disabled={saving}>
+                    <View style={[styles.iconContainer, { backgroundColor: '#FFF0F0' }]}>
+                        <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                    </View>
+                    <Text style={[styles.menuText, { color: '#EF4444' }]}>Elimina Account</Text>
                     <Ionicons name="chevron-forward" size={18} color={palette.gray} />
                 </Pressable>
 
@@ -200,7 +244,7 @@ export default function ProfileScreen() {
                         <Ionicons name="information-circle" size={20} color={palette.black} />
                     </View>
                     <Text style={styles.menuText}>Versione</Text>
-                    <Text style={styles.menuSubText}>1.1.0</Text>
+                    <Text style={styles.menuSubText}>1.2.0</Text>
                 </View>
             </ScrollView>
         </Animated.View>
@@ -379,5 +423,46 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '900',
         color: '#166534',
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 4,
+    },
+    inputBase: {
+        flex: 1,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+    },
+    inputLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#94A3B8',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 2,
+    },
+    inputText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    inputTextPlaceholder: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#94A3B8',
+    },
+    addBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#6366F1',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 })

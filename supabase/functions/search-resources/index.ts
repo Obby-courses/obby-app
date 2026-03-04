@@ -175,17 +175,37 @@ serve(async (req) => {
         })
     }
 
-    // Return video data WITHOUT saving to DB
-    const vId = video.id.videoId
-    
     // Construct high-res thumbnail URLs manually
     // maxresdefault (1280x720) is crispest, sddefault (640x480) is a good fallback
     const hqThumbnail = `https://i.ytimg.com/vi/${vId}/maxresdefault.jpg`
     const sdThumbnail = `https://i.ytimg.com/vi/${vId}/sddefault.jpg`
     
+    // FETCH FULL DESCRIPTION (search results are truncated to 160 chars)
+    let fullDescription = video.snippet.description
+    try {
+      const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vId}&key=${YT_KEY}`)
+      if (detailsRes.ok) {
+        const detailsData = await detailsRes.json()
+        if (detailsData.items?.[0]?.snippet?.description) {
+          fullDescription = detailsData.items[0].snippet.description
+          console.log(`[DETAILS] Fetched full description for ${vId} (${fullDescription.length} chars)`)
+        }
+      }
+    } catch (err) {
+      console.warn(`[DETAILS ERROR] Could not fetch full description for ${vId}:`, err.message)
+    }
+
+    // Decode HTML entities that YouTube API sometimes includes in titles
+    const decodeHtml = (str: string) => str
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+
     const videoData = {
-      title: video.snippet.title,
-      description: video.snippet.description,
+      title: decodeHtml(video.snippet.title),
+      description: fullDescription,
       url: `https://www.youtube.com/watch?v=${vId}`,
       thumbnail_url: hqThumbnail || sdThumbnail || video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.default?.url,
       ai_selection_reason: AI_REASON

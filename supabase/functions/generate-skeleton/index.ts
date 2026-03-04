@@ -10,7 +10,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  console.log("[VERSION] 2026-02-25 - GENERATE-SKELETON UNIFIED v1.0.0");
+  console.log("[VERSION] 2026-03-02 - GENERATE-SKELETON v2.0 - JIT Normal Mode");
 
   try {
     const { topic, userId, bulkMode } = await req.json();
@@ -114,52 +114,65 @@ serve(async (req: Request) => {
 
       if (mErr) throw new Error(`Errore salvataggio macro-fase "${mp.title}": ${mErr.message}`);
 
-      console.log(`  ✅ Macro-fase ${mi + 1}/${content.macro_phases.length}: "${insertedMacro.title}" con ${mp.phases.length} fasi`);
+      console.log(`  ✅ Macro-fase ${mi + 1}/${content.macro_phases.length}: "${insertedMacro.title}"`);
       allInsertedMacros.push(insertedMacro);
-      const phasesToInsert = mp.phases.map((p: any, pi: number) => ({
+
+      // In Normal Mode (bulkMode=false), we DO NOT insert phases into the DB yet.
+      // We will only return them to the frontend so it can choose where to start.
+      const phasesPlan = mp.phases.map((p: any, pi: number) => ({
         course_id: course.id,
         macro_phase_id: insertedMacro.id,
         title: p.title,
         keywords: p.keywords || [],
-        order_index: p.order_index || pi + 1,
+        order_index: (typeof p.order_index === 'number' ? p.order_index : pi + 1),
+        description: p.description || "",
+        milestone_intent: p.milestone_intent || null
       }));
 
-      const { data: insertedPhases, error: pErr } = await supabase
-        .from("phases")
-        .insert(phasesToInsert)
-        .select();
+      if (bulkMode === true) {
+        console.log(`  📦 Bulk Mode: Saving ${phasesPlan.length} phases for "${insertedMacro.title}"`);
+        const { data: insertedPhases, error: pErr } = await supabase
+          .from("phases")
+          .insert(phasesPlan.map(p => ({
+             course_id: p.course_id,
+             macro_phase_id: p.macro_phase_id,
+             title: p.title,
+             keywords: p.keywords,
+             order_index: p.order_index
+          })))
+          .select();
 
-      if (pErr) throw new Error(`Errore salvataggio fasi per "${insertedMacro.title}": ${pErr.message}`);
+        if (pErr) throw new Error(`Errore salvataggio fasi per "${insertedMacro.title}": ${pErr.message}`);
+        
+        allInsertedPhases.push(...(insertedPhases || []));
 
-      /* 3c. Inserisci Milestone Intent (solo in Bulk Mode) */
-      if (bulkMode === true && insertedPhases) {
+        /* 3c. Inserisci Milestone Intent (solo in Bulk Mode) */
+        if (insertedPhases) {
           for (let i = 0; i < insertedPhases.length; i++) {
-              const phase = insertedPhases[i];
-              const phaseData = mp.phases[i]; // Corresponding AI data
-              
-              if (phaseData.milestone_intent) {
-                  const { error: mErr } = await supabase
-                    .from('milestones')
-                    .insert({
-                        course_id: course.id,
-                        phase_id: phase.id,
-                        title: phaseData.milestone_intent.title,
-                        description: phaseData.milestone_intent.description,
-                        milestone_type: 'text_submission', // Default intent type
-                        status: 'pending',
-                        completed: false,
-                        target_config: {
-                            is_intent_only: true,
-                            generated_at: new Error().stack // Simple way to mark it
-                        }
-                    });
-                  if (mErr) console.error(`[SKELETON] Failed to save milestone intent for phase ${phase.id}:`, mErr.message);
-                  else console.log(`  🎯 Milestone intent saved for phase: ${phase.title}`);
-              }
+            const phase = insertedPhases[i];
+            const phaseData = mp.phases[i]; 
+            
+            if (phaseData.milestone_intent) {
+              const { error: mErr } = await supabase
+                .from('milestones')
+                .insert({
+                  course_id: course.id,
+                  phase_id: phase.id,
+                  title: phaseData.milestone_intent.title,
+                  description: phaseData.milestone_intent.description,
+                  milestone_type: 'text_submission',
+                  status: 'pending',
+                  completed: false,
+                  target_config: { is_intent_only: true }
+                });
+              if (mErr) console.error(`[SKELETON] Failed to save milestone intent for phase ${phase.id}:`, mErr.message);
+            }
           }
+        }
+      } else {
+        // Normal Mode: Add to the list to be returned, but these have no DB 'id' yet
+        allInsertedPhases.push(...phasesPlan);
       }
-
-      allInsertedPhases.push(...(insertedPhases || []));
     }
 
     const totalPhases = allInsertedPhases.length;

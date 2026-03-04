@@ -66,8 +66,10 @@ serve(async (req: Request) => {
                 { 
                   role: "system", 
                   content: `Sei un esperto di didattica. Il tuo compito è creare un riassunto concettuale e utile di un video didattico basandoti solo sul titolo e sulla descrizione forniti. 
-                  Il riassunto deve essere in ${language === 'it' ? 'Italiano' : language}, asciutto, professionale e focalizzato su COSA l'utente imparerà.
-                  Rispondi SOLO con il riassunto (max 3-4 frasi).` 
+                   Il riassunto deve essere in ${language === 'it' ? 'Italiano' : language}, professionale e ricco di dettagli. 
+                   Spiega in modo approfondito COSA l'utente imparerà, quali sono i punti chiave toccati e perché questa risorsa è utile.
+                   Obiettivo: massimizzare il dettaglio fornito. Rispondi con un paragrafo strutturato di almeno 6-8 frasi.
+                   Rispondi SOLO con il riassunto.` 
                 },
                 { 
                   role: "user", 

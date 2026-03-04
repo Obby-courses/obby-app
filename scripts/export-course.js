@@ -87,7 +87,7 @@ async function exportCourse(courseId) {
                     // Step
                     const { data: steps } = await supabase
                         .from('steps')
-                        .select('*')
+                        .select('*, resources(*)')
                         .eq('phase_id', p.id)
                         .order('order_index');
 
@@ -95,18 +95,28 @@ async function exportCourse(courseId) {
                         output += `#### Checklist Progressiva:\n`;
                         steps.forEach(s => {
                             output += `- [ ] **${s.title}**\n  *Descrizione:* ${s.description || '...'}\n`;
+                            if (s.resources) {
+                                output += `  *Risorsa:* ${s.resources.title}\n`;
+                                output += `  *Riassunto:* ${s.resources.summary || '...'}\n`;
+                                output += `  *Link:* ${s.resources.url}\n`;
+                            }
                         });
                     }
 
                     // Milestone
                     const { data: milestone } = await supabase
                         .from('milestones')
-                        .select('*')
+                        .select('*, resources(*)')
                         .eq('phase_id', p.id)
                         .maybeSingle();
 
                     if (milestone) {
                         output += `\n#### 🏁 Milestone Finale di Fase: ${milestone.title}\n${milestone.description}\n`;
+                        if (milestone.resources) {
+                            output += `*Risorsa di Supporto:* ${milestone.resources.title}\n`;
+                            output += `*Riassunto:* ${milestone.resources.summary || '...'}\n`;
+                            output += `*Link:* ${milestone.resources.url}\n`;
+                        }
                     }
                     output += `\n---\n\n`;
                 }

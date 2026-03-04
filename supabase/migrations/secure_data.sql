@@ -42,21 +42,32 @@ create policy "Users can delete their own courses."
   on courses for delete
   using ( auth.uid() = user_id );
 
--- Policies for children (cascading access)
-create policy "Access phases if course is accessible."
+-- Policies for children (cascading access using course_id for better performance/reliability)
+create policy "Access macro_phases if course is accessible."
   on macro_phases for all
-  using ( exists (select 1 from courses where id = macro_phases.course_id) );
+  using ( exists (select 1 from courses where id = macro_phases.course_id and user_id = auth.uid()) );
 
-create policy "Access sub-phases if course is accessible."
+create policy "Access phases if course is accessible."
   on phases for all
-  using ( exists (select 1 from macro_phases mp join courses c on mp.course_id = c.id where mp.id = phases.macro_phase_id) );
+  using ( exists (select 1 from courses where id = phases.course_id and user_id = auth.uid()) );
 
-create policy "Access steps if phase is accessible."
+create policy "Access steps if course is accessible."
   on steps for all
-  using ( exists (select 1 from phases p join macro_phases mp on p.macro_phase_id = mp.id join courses c on mp.course_id = c.id where p.id = steps.phase_id) );
+  using ( exists (select 1 from courses where id = steps.course_id and user_id = auth.uid()) );
 
-create policy "Access resources if linked to an accessible step."
+create policy "Access resources if step is accessible."
   on resources for all
-  using ( exists (select 1 from steps s join phases p on s.phase_id = p.id join macro_phases mp on p.macro_phase_id = mp.id join courses c on mp.course_id = c.id where s.resource_id = resources.id) );
+  using ( 
+    exists (
+      select 1 from steps s 
+      join courses c on s.course_id = c.id 
+      where s.resource_id = resources.id and c.user_id = auth.uid()
+    ) 
+  );
+
+-- Milestone policy (needed since we added the table)
+create policy "Access milestones if course is accessible."
+  on milestones for all
+  using ( exists (select 1 from courses where id = milestones.course_id and user_id = auth.uid()) );
 
 

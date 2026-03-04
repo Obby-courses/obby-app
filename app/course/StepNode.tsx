@@ -24,6 +24,7 @@ type StepNodeProps = {
     remainingProgress?: number // 0 to 1
     onPress: () => void
     courseColor?: string
+    streakStatus?: 'fire' | 'fire-grey' | 'none'
 }
 
 export default function StepNode({
@@ -35,6 +36,7 @@ export default function StepNode({
     remainingProgress = 1,
     onPress,
     courseColor = colors.primary,
+    streakStatus = 'none',
 }: StepNodeProps) {
     const isCompleted = step.completed || step.status === 'skipped'
 
@@ -46,7 +48,7 @@ export default function StepNode({
     if (isCompleted) {
         backgroundColor = colors.background
         textColor = colors.textPrimary
-        borderColor = colors.primary // Subtle indicator of completion? Or just black.
+        borderColor = colors.primary
     } else if (isCurrent) {
         backgroundColor = colors.background
         textColor = colors.textPrimary
@@ -70,6 +72,18 @@ export default function StepNode({
 
     return (
         <View style={styles.container}>
+            {/* STREAK FIRE BADGE */}
+            {streakStatus !== 'none' && (
+                <View style={styles.fireBadge}>
+                    <Text style={[
+                        styles.fireEmoji,
+                        streakStatus === 'fire-grey' && styles.fireEmojiGrey
+                    ]}>
+                        🔥
+                    </Text>
+                </View>
+            )}
+
             {isCurrent && (
                 <View style={styles.svgWrapper}>
                     <Svg width={size} height={size}>
@@ -106,7 +120,7 @@ export default function StepNode({
                         backgroundColor,
                         borderColor: isPlaceholder ? colors.border : (isCompleted || isCurrent ? colors.primary : borderColor),
                         borderStyle: isPlaceholder ? 'dashed' : 'solid',
-                        opacity: isLocked && !isPlaceholder ? 0.3 : 1, // More faded if locked
+                        opacity: isLocked && !isPlaceholder ? 0.3 : 1,
                         transform: [{ scale: (pressed && !isPlaceholder) ? 0.92 : 1 }],
                         shadowOpacity: (isCurrent || isCompleted) ? 0.1 : 0,
                     },
@@ -151,5 +165,17 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: '800',
     },
+    fireBadge: {
+        position: 'absolute',
+        top: -6,
+        right: 2,
+        zIndex: 10,
+    },
+    fireEmoji: {
+        fontSize: 20,
+    },
+    fireEmojiGrey: {
+        // Skipped-in-time: semi-transparent to visually distinguish from orange fire
+        opacity: 0.35,
+    },
 });
-

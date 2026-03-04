@@ -11,6 +11,7 @@ type Profile = {
     updated_at: string
     primary_language: string
     secondary_languages: string[]
+    tools: string[]
 }
 
 type AuthContextType = {
