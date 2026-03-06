@@ -43,19 +43,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
+        console.log('🔐 [Auth] AuthProvider montato, avvio getSession...')
+
+        // Timeout di sicurezza: dopo 8 secondi forza loading=false
+        const timeout = setTimeout(() => {
+            console.error('⏱️ [Auth] TIMEOUT! getSession non ha risposto in 8s → forzo loading=false')
+            setLoading(false)
+        }, 8000)
+
         // Check active sessions and sets the user
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            clearTimeout(timeout)
+            console.log('✅ [Auth] getSession risposta ricevuta:', {
+                hasSession: !!session,
+                userId: session?.user?.id ?? 'nessuno',
+                error: error?.message ?? null
+            })
             setSession(session)
             setUser(session?.user ?? null)
             if (session?.user) {
+                console.log('👤 [Auth] Utente trovato, fetch del profilo...')
                 fetchProfile(session.user.id)
             } else {
+                console.log('🔓 [Auth] Nessuna sessione → redirect a /login')
                 setLoading(false)
             }
+        }).catch((err) => {
+            clearTimeout(timeout)
+            console.error('❌ [Auth] getSession ERRORE:', err)
+            setLoading(false)
         })
 
-        // Listen for changes on auth state (sing in, sign out, etc.)
+        // Listen for changes on auth state
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log('🔄 [Auth] onAuthStateChange evento:', _event, '| userId:', session?.user?.id ?? 'nessuno')
             setSession(session)
             setUser(session?.user ?? null)
 
@@ -71,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [])
 
     const fetchProfile = async (userId: string) => {
+        console.log('📋 [Auth] fetchProfile per userId:', userId)
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -79,15 +101,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single()
 
             if (error && error.code !== 'PGRST116') {
-                console.warn('Error fetching profile:', error)
+                console.warn('⚠️ [Auth] fetchProfile errore:', error.message, '| code:', error.code)
             }
 
             if (data) {
+                console.log('✅ [Auth] Profilo caricato:', data.full_name ?? data.username ?? 'n/a')
                 setProfile(data)
+            } else {
+                console.warn('⚠️ [Auth] Profilo non trovato per userId:', userId)
             }
         } catch (error) {
-            console.error('Unexpected error fetching profile:', error)
+            console.error('❌ [Auth] fetchProfile ECCEZIONE:', error)
         } finally {
+            console.log('🏁 [Auth] fetchProfile completato → loading=false')
             setLoading(false)
         }
     }
