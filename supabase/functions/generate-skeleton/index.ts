@@ -10,7 +10,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  console.log("[VERSION] 2026-03-02 - GENERATE-SKELETON v2.0 - JIT Normal Mode");
+  console.log("[VERSION] 2026-03-06 - GENERATE-SKELETON v3.0 - Full Save: phases always saved in DB (Normal + Bulk)");
 
   try {
     const { topic, userId, bulkMode } = await req.json();
@@ -129,50 +129,51 @@ serve(async (req: Request) => {
         milestone_intent: p.milestone_intent || null
       }));
 
-      if (bulkMode === true) {
-        console.log(`  📦 Bulk Mode: Saving ${phasesPlan.length} phases for "${insertedMacro.title}"`);
-        const { data: insertedPhases, error: pErr } = await supabase
-          .from("phases")
-          .insert(phasesPlan.map(p => ({
-             course_id: p.course_id,
-             macro_phase_id: p.macro_phase_id,
-             title: p.title,
-             keywords: p.keywords,
-             order_index: p.order_index
-          })))
-          .select();
+      // ✅ Fasi SEMPRE salvate nel DB (sia Normal sia Bulk Mode)
+      // Così create-steps può vedere il percorso completo del corso via query DB
+      console.log(`  📥 Salvataggio ${phasesPlan.length} fasi per "${insertedMacro.title}" (bulkMode: ${!!bulkMode})`);
+      const { data: insertedPhases, error: pErr } = await supabase
+        .from("phases")
+        .insert(phasesPlan.map(p => ({
+          course_id: p.course_id,
+          macro_phase_id: p.macro_phase_id,
+          title: p.title,
+          keywords: p.keywords,
+          order_index: p.order_index,
+          description: p.description,
+          milestone_intent: p.milestone_intent
+        })))
+        .select();
 
-        if (pErr) throw new Error(`Errore salvataggio fasi per "${insertedMacro.title}": ${pErr.message}`);
-        
-        allInsertedPhases.push(...(insertedPhases || []));
+      if (pErr) throw new Error(`Errore salvataggio fasi per "${insertedMacro.title}": ${pErr.message}`);
 
-        /* 3c. Inserisci Milestone Intent (solo in Bulk Mode) */
-        if (insertedPhases) {
-          for (let i = 0; i < insertedPhases.length; i++) {
-            const phase = insertedPhases[i];
-            const phaseData = mp.phases[i]; 
-            
-            if (phaseData.milestone_intent) {
-              const { error: mErr } = await supabase
-                .from('milestones')
-                .insert({
-                  course_id: course.id,
-                  phase_id: phase.id,
-                  title: phaseData.milestone_intent.title,
-                  description: phaseData.milestone_intent.description,
-                  milestone_type: 'text_submission',
-                  status: 'pending',
-                  completed: false,
-                  target_config: { is_intent_only: true }
-                });
-              if (mErr) console.error(`[SKELETON] Failed to save milestone intent for phase ${phase.id}:`, mErr.message);
-            }
+      allInsertedPhases.push(...(insertedPhases || []));
+      console.log(`  ✅ ${insertedPhases?.length || 0} fasi salvate per "${insertedMacro.title}"`);
+
+      /* Milestone intents: solo in Bulk Mode */
+      if (bulkMode === true && insertedPhases) {
+        for (let i = 0; i < insertedPhases.length; i++) {
+          const phase = insertedPhases[i];
+          const phaseData = mp.phases[i]; 
+          
+          if (phaseData.milestone_intent) {
+            const { error: mErr } = await supabase
+              .from('milestones')
+              .insert({
+                course_id: course.id,
+                phase_id: phase.id,
+                title: phaseData.milestone_intent.title,
+                description: phaseData.milestone_intent.description,
+                milestone_type: 'text_submission',
+                status: 'pending',
+                completed: false,
+                target_config: { is_intent_only: true }
+              });
+            if (mErr) console.error(`[SKELETON] Failed to save milestone intent for phase ${phase.id}:`, mErr.message);
           }
         }
-      } else {
-        // Normal Mode: Add to the list to be returned, but these have no DB 'id' yet
-        allInsertedPhases.push(...phasesPlan);
       }
+
     }
 
     const totalPhases = allInsertedPhases.length;

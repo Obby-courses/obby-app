@@ -336,30 +336,24 @@ export default function NewCourseAIScreen() {
         console.warn('⚠️ Tool assessment error (non-blocking):', toolErr.message)
       }
 
-      /* Identifica la macro di partenza e inserisci le sue fasi JIT */
+      /* Identifica la macro di partenza — le fasi sono già nel DB dallo skeleton */
       const targetMacro = mPhases[startMacroIndex]
       if (!targetMacro) throw new Error('Macro-fase di partenza non trovata')
 
-      console.log(`🎯 PARTENZA: Macro ${startMacroIndex + 1} — "${targetMacro.title}" (${targetMacro.phases?.length || 0} fasi da inserire)`)
+      console.log(`🎯 PARTENZA: Macro ${startMacroIndex + 1} — "${targetMacro.title}"`)
 
-      const phasesToInsert = targetMacro.phases.map((p: any, pi: number) => ({
-        course_id: courseId,
-        macro_phase_id: targetMacro.id,
-        title: p.title,
-        keywords: p.keywords || [],
-        order_index: (typeof p.order_index === 'number' ? p.order_index : pi + 1)
-      }))
-
-      console.log(`🗂️ Fasi:`, phasesToInsert.map((p: { order_index: number, title: string }) => `${p.order_index}. ${p.title}`).join(' | '))
-
-      const { data: insertedPhases, error: phasesInsertErr } = await supabase
+      // Le fasi sono già state salvate in DB da generate-skeleton, leggiamo quelle reali
+      const { data: insertedPhases, error: phasesReadErr } = await supabase
         .from('phases')
-        .insert(phasesToInsert)
-        .select()
+        .select('id, title, order_index')
+        .eq('macro_phase_id', targetMacro.id)
+        .order('order_index')
 
-      if (phasesInsertErr || !insertedPhases?.length) {
-        throw new Error(`Errore salvataggio fasi JIT: ${phasesInsertErr?.message || 'Nessuna fase creata'}`)
+      if (phasesReadErr || !insertedPhases?.length) {
+        throw new Error(`Errore lettura fasi dal DB: ${phasesReadErr?.message || 'Nessuna fase trovata'}`)
       }
+
+      console.log(`🗂️ Fasi lette dal DB:`, insertedPhases.map(p => `${p.order_index}. ${p.title}`).join(' | '))
 
       // La prima fase della macro scelta sarà quella attiva
       const targetPhase = insertedPhases.sort((a, b) => a.order_index - b.order_index)[0]
