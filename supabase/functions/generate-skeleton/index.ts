@@ -125,8 +125,8 @@ serve(async (req: Request) => {
         title: p.title,
         keywords: p.keywords || [],
         order_index: (typeof p.order_index === 'number' ? p.order_index : pi + 1),
-        description: p.description || "",
-        milestone_intent: p.milestone_intent || null
+        // description and milestone_intent are NOT columns in the 'phases' table
+        // They are used for milestone creation later.
       }));
 
       // ✅ Fasi SEMPRE salvate nel DB (sia Normal sia Bulk Mode)
@@ -134,15 +134,7 @@ serve(async (req: Request) => {
       console.log(`  📥 Salvataggio ${phasesPlan.length} fasi per "${insertedMacro.title}" (bulkMode: ${!!bulkMode})`);
       const { data: insertedPhases, error: pErr } = await supabase
         .from("phases")
-        .insert(phasesPlan.map(p => ({
-          course_id: p.course_id,
-          macro_phase_id: p.macro_phase_id,
-          title: p.title,
-          keywords: p.keywords,
-          order_index: p.order_index,
-          description: p.description,
-          milestone_intent: p.milestone_intent
-        })))
+        .insert(phasesPlan) // phasesPlan now only contains valid columns for 'phases' table
         .select();
 
       if (pErr) throw new Error(`Errore salvataggio fasi per "${insertedMacro.title}": ${pErr.message}`);
@@ -150,13 +142,15 @@ serve(async (req: Request) => {
       allInsertedPhases.push(...(insertedPhases || []));
       console.log(`  ✅ ${insertedPhases?.length || 0} fasi salvate per "${insertedMacro.title}"`);
 
-      /* Milestone intents: solo in Bulk Mode */
-      if (bulkMode === true && insertedPhases) {
+      /* Milestone intents: SEMPRE salvati (sia Normal che Bulk) */
+      // Per garantire che l'AI abbia una visione completa dell'intero percorso utente
+      if (insertedPhases) {
         for (let i = 0; i < insertedPhases.length; i++) {
           const phase = insertedPhases[i];
           const phaseData = mp.phases[i]; 
           
           if (phaseData.milestone_intent) {
+            console.log(`    🚩 Creazione milestone intent per fase: ${phase.title}`);
             const { error: mErr } = await supabase
               .from('milestones')
               .insert({
@@ -170,6 +164,7 @@ serve(async (req: Request) => {
                 target_config: { is_intent_only: true }
               });
             if (mErr) console.error(`[SKELETON] Failed to save milestone intent for phase ${phase.id}:`, mErr.message);
+            else console.log(`    ✅ Milestone salvata correttamente.`);
           }
         }
       }
@@ -177,7 +172,7 @@ serve(async (req: Request) => {
     }
 
     const totalPhases = allInsertedPhases.length;
-    console.log(`✅ SCHELETRO COMPLETATO: ${allInsertedMacros.length} macro-fasi, ${totalPhases} fasi totali (Milestones: ${bulkMode ? 'Intents Created' : 'None'})`);
+    console.log(`✅ SCHELETRO COMPLETATO: ${allInsertedMacros.length} macro-fasi, ${totalPhases} fasi totali (Milestones Intents created for all)`);
 
     /* =============================================================
        RISPOSTA

@@ -43,7 +43,7 @@
     "orientation": "default",
     "android": {
       "package": "com.obby.app",
-      "versionCode": 18,
+      "versionCode": 19,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png",
@@ -53,7 +53,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.obby.app",
-      "buildNumber": "1.1.9",
+      "buildNumber": "1.2.0",
       "supportsTablet": true
     }
   }
