@@ -110,6 +110,7 @@ serve(async (req) => {
 
     let video = null
     let AI_REASON = null
+    const candidates = ytData.items || []
 
     // 3) AI Filtering
     if (candidates.length > 0 && GROQ_KEY) {
