@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { RESOURCE_STRUCTURED_EXTRACTOR } from "../prompts.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,45 +10,84 @@ const corsHeaders = {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
-  console.log("[VERSION] 2026-01-28 - GET RESOURCE SUMMARY")
+  console.log("[VERSION] 2026-03-07 - GET RESOURCE SUMMARY v2.0")
 
   try {
-    const { resourceId, type, language, title, description } = await req.json()
+    const { resourceId, type, language, title, description, url } = await req.json()
 
-    if (!resourceId) throw new Error("Missing resourceId")
+    if (!resourceId && !url) throw new Error("Missing resourceId or url")
 
     const RAPID_API_KEY = Deno.env.get("RAPID_API_KEY")
     const GROQ_KEY = Deno.env.get("GROQ_API_KEY")
 
-    if (type === 'youtube' || !type) {
-      console.log(`[YOUTUBE] Summarizing video: ${resourceId} (Target Language: ${language || 'it'})`)
+    // The new API needs a full URL. If we only have resourceId (YouTube ID), we reconstruct the URL.
+    const finalUrl = url || (resourceId ? `https://www.youtube.com/watch?v=${resourceId}` : null)
+    
+    if (!finalUrl) throw new Error("Could not determine video URL")
+
+    // Only process videos for now (as before)
+    if (type === 'video' || type === 'youtube' || !type) {
+      console.log(`[TRANSCRIPT] Summarizing video: ${finalUrl} (Target Language: ${language || 'it'})`)
       
       let summary = null
 
-      // Tier 1: Try RapidAPI (Transcript based)
-      try {
-        const res = await fetch(`https://youtube-summarizer2.p.rapidapi.com/summarize?id=${resourceId}`, {
-          method: 'GET',
-          headers: {
-            'x-rapidapi-host': 'youtube-summarizer2.p.rapidapi.com',
-            'x-rapidapi-key': RAPID_API_KEY
-          }
-        })
+      // Tier 1: Try RapidAPI (Transcript based via video-transcript-scraper)
+      if (RAPID_API_KEY) {
+        try {
+          const isYoutube = finalUrl.includes("youtube.com") || finalUrl.includes("youtu.be")
+          const endpoint = isYoutube 
+            ? "https://video-transcript-scraper.p.rapidapi.com/transcript/youtube"
+            : "https://video-transcript-scraper.p.rapidapi.com/transcript"
 
-        if (res.ok) {
-          const data = await res.json()
-          let apiRawContent = data.summary || data.translated_summary || data.text || data.translated_transcript
-          
-          if (apiRawContent && 
-              !apiRawContent.includes("unable to summarize") && 
-              !apiRawContent.includes("no content provided") && 
-              !apiRawContent.includes("error message")) {
-            summary = apiRawContent
-            console.log("✅ Tier 1: Summary extracted from YouTube transcript")
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-rapidapi-host': 'video-transcript-scraper.p.rapidapi.com',
+              'x-rapidapi-key': RAPID_API_KEY
+            },
+            body: JSON.stringify({
+              video_url: finalUrl,
+              transcript_text: true
+            })
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            const apiRawContent = data.data?.transcript || ""
+            
+            if (apiRawContent && apiRawContent.length > 50) {
+              // If we have substantial raw content, use LLM to "Structure" it
+              if (GROQ_KEY) {
+                console.log("🤖 Tier 1.5: Structuring info from transcript using Groq...")
+                const expansionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEY}` },
+                  body: JSON.stringify({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [
+                      { role: "system", content: RESOURCE_STRUCTURED_EXTRACTOR },
+                      { role: "user", content: `CONTESTO CORSO: ${title || "Generale"}\n\nTRASCRIZIONE:\n${apiRawContent}` }
+                    ],
+                    temperature: 0.2,
+                  }),
+                })
+                if (expansionRes.ok) {
+                  const expData = await expansionRes.json()
+                  summary = expData.choices?.[0]?.message?.content?.trim()
+                  if (summary) console.log("✅ Tier 1 success: Structured information extracted")
+                }
+              }
+
+              if (!summary) {
+                summary = apiRawContent
+                console.log("✅ Tier 1: Raw transcript used directly")
+              }
+            }
           }
+        } catch (sumErr) {
+          console.warn("⚠️ Tier 1 failed:", sumErr.message)
         }
-      } catch (sumErr) {
-        console.warn("⚠️ Tier 1 failed:", sumErr.message)
       }
 
       // Tier 2: AI Conceptual Fallback (using Groq)
@@ -65,15 +105,11 @@ serve(async (req: Request) => {
               messages: [
                 { 
                   role: "system", 
-                  content: `Sei un esperto di didattica. Il tuo compito è creare un riassunto concettuale e utile di un video didattico basandoti solo sul titolo e sulla descrizione forniti. 
-                   Il riassunto deve essere in ${language === 'it' ? 'Italiano' : language}, professionale e ricco di dettagli. 
-                   Spiega in modo approfondito COSA l'utente imparerà, quali sono i punti chiave toccati e perché questa risorsa è utile.
-                   Obiettivo: massimizzare il dettaglio fornito. Rispondi con un paragrafo strutturato di almeno 6-8 frasi.
-                   Rispondi SOLO con il riassunto.` 
+                  content: RESOURCE_STRUCTURED_EXTRACTOR // Use the same structured logic even for metadata
                 },
                 { 
                   role: "user", 
-                  content: `Titolo: ${title}\nDescrizione: ${description}` 
+                  content: `CONTESTO CORSO: ${title}\n\nMETADATI (Titolo e Descrizione):\nTitolo: ${title}\nDescrizione: ${description}` 
                 }
               ],
               temperature: 0.3,
@@ -90,9 +126,7 @@ serve(async (req: Request) => {
         }
       }
 
-      // Final check (Optional translation step removed per user request)
       if (!summary) {
-
         return new Response(JSON.stringify({ success: false, error: "Could not generate any summary" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         })

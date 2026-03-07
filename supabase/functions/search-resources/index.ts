@@ -109,72 +109,79 @@ serve(async (req) => {
     if (!ytRes.ok) throw new Error(`YouTube API Error: ${ytRes.status}`)
 
     let video = null
-    const candidates = ytData.items || []
     let AI_REASON = null
 
-    // 3) AI Filtering (if we have multiple candidates)
-    if (candidates.length > 0) {
-      // Default to first
-      video = candidates[0]
+    // 3) AI Filtering
+    if (candidates.length > 0 && GROQ_KEY) {
+      try {
+        const simplifiedCandidates = candidates.map((c: any) => ({
+           id: c.id.videoId,
+           title: c.snippet.title,
+           description: c.snippet.description
+        }))
 
-      if (candidates.length > 1 && GROQ_KEY) {
-        try {
-          const simplifiedCandidates = candidates.map((c: any) => ({
-             id: c.id.videoId,
-             title: c.snippet.title,
-             description: c.snippet.description
-          }))
-
-          const filterRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${GROQ_KEY}`,
-            },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile",
-              temperature: 0.1,
-              response_format: { type: "json_object" },
-              messages: [
-                { role: "system", content: RESOURCE_FILTER_PROMPT },
-                { 
-                  role: "user", 
-                  content: USER_RESOURCE_FILTER_PROMPT({
-                    stepTitle: step_title,
-                    stepDescription: step_description || "",
-                    candidates: simplifiedCandidates
-                  }) 
-                },
-              ]
-            }),
-          })
-          
-          if (filterRes.ok) {
-             const filterData = await filterRes.json()
-             if (filterData.choices && filterData.choices[0]) {
-               const choice = JSON.parse(filterData.choices[0].message.content)
-               console.log(`[AI FILTER] Selected: ${choice.selected_video_id} - Reason: ${choice.reason}`)
-               
+        const filterRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GROQ_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.1,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: RESOURCE_FILTER_PROMPT },
+              {
+                role: "user",
+                content: USER_RESOURCE_FILTER_PROMPT({
+                  stepTitle: step_title,
+                  stepDescription: step_description || "",
+                  candidates: simplifiedCandidates,
+                  courseTitle: course_title || "Generale",
+                  courseDescription: course_description || ""
+                })
+              },
+            ]
+          }),
+        })
+        
+        if (filterRes.ok) {
+           const filterData = await filterRes.json()
+           if (filterData.choices && filterData.choices[0]) {
+             const choice = JSON.parse(filterData.choices[0].message.content)
+             console.log(`[AI FILTER] Selected: ${choice.selected_video_id} - Reason: ${choice.reason}`)
+             
+             if (choice.selected_video_id) {
                const bestMatch = candidates.find((c: any) => c.id.videoId === choice.selected_video_id)
                if (bestMatch) {
                  video = bestMatch
                  AI_REASON = choice.reason
                }
+             } else {
+               console.log(`[AI FILTER] REJECTED: Video is not relevant to ${course_title}`)
              }
-          }
-        } catch (filterErr) {
-           console.error("[FILTER ERROR] AI filtering failed, using top result:", filterErr)
+           }
         }
+      } catch (filterErr) {
+         console.error("[FILTER ERROR] AI filtering failed:", filterErr)
+         // Safety fallback: if AI fails, we might still want the first one OR strictly skip.
+         // Given the recent user request for "STRICT DOMAIN LOCK", we'll skip.
+         video = null 
       }
+    } else if (candidates.length > 0) {
+      // No Groq key? Fallback to first as legacy behavior
+      video = candidates[0]
     }
 
     if (!video) {
-        console.log(`[SKIP] No video found for: ${step_title}`)
-        return new Response(JSON.stringify({ success: false, message: "No video found" }), {
+        console.log(`[SKIP] No suitable or relevant video found for: ${step_title}`)
+        return new Response(JSON.stringify({ success: false, message: "No relevant video found" }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
         })
     }
 
+    const vId = video.id.videoId
     // Construct high-res thumbnail URLs manually
     // maxresdefault (1280x720) is crispest, sddefault (640x480) is a good fallback
     const hqThumbnail = `https://i.ytimg.com/vi/${vId}/maxresdefault.jpg`

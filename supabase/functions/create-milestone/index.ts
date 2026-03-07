@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { categorizeResource } from '../categorize-resource.ts'
 import {
     MILESTONE_GENERATOR,
+    RESOURCE_STRUCTURED_EXTRACTOR,
     USER_MILESTONE_PROMPT
 } from '../prompts.ts'
 
@@ -317,12 +318,28 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
   // Check if URL already exists
   const { data: existing } = await supabase
     .from('resources')
-    .select('id')
+    .select('id, summary, raw_summary')
     .eq('url', cleanUrl)
     .limit(1)
   
+  let existingId = null
   if (existing && existing.length > 0) {
-    return { id: existing[0].id }
+    const res = existing[0]
+    const promoCheck = (res.summary || "").toLowerCase()
+    const isPromotional = promoCheck.includes("iscriviti") || 
+                          promoCheck.includes("corso completo") || 
+                          promoCheck.includes("seguimi su") || 
+                          promoCheck.includes("clicca sul link") ||
+                          promoCheck.includes("link in bio") ||
+                          promoCheck.length < 50
+
+    if (res.raw_summary && !isPromotional) {
+      console.log(`[DEDUP] Resource exists and is high quality: ${cleanUrl}`)
+      return { id: res.id }
+    }
+    
+    console.log(`[REFRESH] Resource "${cleanUrl}" needs summary upgrade (isPromotional: ${isPromotional})`)
+    existingId = res.id
   }
 
   let finalThumbnail = resource.thumbnail_url
@@ -335,32 +352,70 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
   let rawSummary = ""
   if (resource.type === 'video') {
     const vId = cleanUrl.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/)?.[1]
-    if (vId) {
-      console.log(`[RAW-SUM] Fetching raw summary for video ${vId}...`)
+    const RAPID_API_KEY = Deno.env.get("RAPID_API_KEY")
+
+    if (vId && RAPID_API_KEY) {
+      console.log(`[TRANSCRIPT] Fetching transcript for video ${vId} via video-transcript-scraper...`)
       try {
-        const RAPID_API_KEY = Deno.env.get("RAPID_API_KEY")
-        const sumRes = await fetch(`https://youtube-summarizer2.p.rapidapi.com/summarize?id=${vId}`, {
-          method: 'GET',
+        const isYoutube = cleanUrl.includes("youtube.com") || cleanUrl.includes("youtu.be")
+        const endpoint = isYoutube 
+          ? "https://video-transcript-scraper.p.rapidapi.com/transcript/youtube"
+          : "https://video-transcript-scraper.p.rapidapi.com/transcript"
+
+        const tsRes = await fetch(endpoint, {
+          method: 'POST',
           headers: {
-            'x-rapidapi-host': 'youtube-summarizer2.p.rapidapi.com',
-            'x-rapidapi-key': RAPID_API_KEY || ''
-          }
+            'Content-Type': 'application/json',
+            'x-rapidapi-host': 'video-transcript-scraper.p.rapidapi.com',
+            'x-rapidapi-key': RAPID_API_KEY
+          },
+          body: JSON.stringify({
+            video_url: cleanUrl,
+            transcript_text: true
+          })
         })
-        if (sumRes.ok) {
-          const sumData = await sumRes.json()
-          rawSummary = sumData.summary || sumData.translated_summary || sumData.text || sumData.translated_transcript || ""
-          if (rawSummary) console.log(`[RAW-SUM] Success: ${rawSummary.length} chars`)
+
+        if (tsRes.ok) {
+          const tsData = await tsRes.json()
+          const apiRawContent = tsData.data?.transcript || ""
+          
+          if (apiRawContent && apiRawContent.length > 50) {
+            const GROQ_KEY = Deno.env.get("GROQ_API_KEY") || ""
+            if (GROQ_KEY) {
+              console.log("🤖 [STRUCTURED-EXTRACTION] Processing transcript with Groq...")
+              const expansionRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEY}` },
+                body: JSON.stringify({
+                  model: "llama-3.3-70b-versatile",
+                  messages: [
+                    { role: "system", content: RESOURCE_STRUCTURED_EXTRACTOR },
+                    { role: "user", content: `CONTESTO CORSO: ${resource.title}\n\nTRASCRIZIONE:\n${apiRawContent}` }
+                  ],
+                  temperature: 0.2,
+                }),
+              })
+              if (expansionRes.ok) {
+                const expData = await expansionRes.json()
+                rawSummary = expData.choices?.[0]?.message?.content?.trim()
+                if (rawSummary) console.log(`✅ [STRUCTURED-EXTRACTION] Success: ${rawSummary.length} chars`)
+              }
+            }
+
+            if (!rawSummary) {
+              rawSummary = apiRawContent
+              console.log(`✅ [TRANSCRIPT] Using raw text (${rawSummary.length} chars)`)
+            }
+          }
         }
       } catch (sumErr) {
-        console.warn(`[RAW-SUM] Failed for ${vId}:`, sumErr.message)
+        console.warn(`[TRANSCRIPT] Failed:`, sumErr.message)
       }
     }
   }
 
-  // FIX 4: Fallback to full description if raw summary is absent OR truncated
-  const isTruncated = !rawSummary || rawSummary.trimEnd().endsWith('...') || rawSummary.length < 200
-  if (isTruncated && rawSummary) console.warn(`[RAW-SUM] Summary appears truncated (${rawSummary.length} chars). Using full description.`)
-  const finalSummary = (!isTruncated ? rawSummary : null) || resource.description
+  // Final summary selection: preference for extracted/transcript content
+  const finalSummary = rawSummary || resource.description
 
   // Categorize resource via LLM for technical metadata ONLY
   const metadata = await categorizeResource({
@@ -369,25 +424,29 @@ async function getOrCreateResource(supabase: any, resource: any): Promise<{ id: 
     type: resource.type
   })
 
-  // Create new resource
+  // Create or update resource
+  const payload: any = {
+    title: resource.title,
+    url: cleanUrl,
+    thumbnail_url: finalThumbnail,
+    summary: finalSummary,
+    raw_summary: rawSummary || null,
+    type: resource.type,
+    domain: metadata.domain,
+    subdomain: metadata.subdomain,
+    primary_topics: metadata.primary_topics,
+    skill_level: metadata.skill_level,
+    learning_objectives: metadata.learning_objectives,
+    prerequisites: metadata.prerequisites,
+    language: metadata.language,
+    searchable_text: metadata.searchable_text
+  }
+
+  if (existingId) payload.id = existingId
+
   const { data: newResource, error: createError } = await supabase
     .from('resources')
-    .insert({
-      title: resource.title,
-      url: cleanUrl,
-      thumbnail_url: finalThumbnail,
-      summary: finalSummary, // RAW SUMMARY
-      raw_summary: rawSummary || null,
-      type: resource.type,
-      domain: metadata.domain,
-      subdomain: metadata.subdomain,
-      primary_topics: metadata.primary_topics,
-      skill_level: metadata.skill_level,
-      learning_objectives: metadata.learning_objectives,
-      prerequisites: metadata.prerequisites,
-      language: metadata.language,
-      searchable_text: metadata.searchable_text
-    })
+    .upsert(payload, { onConflict: 'url' })
     .select('id')
     .single()
   

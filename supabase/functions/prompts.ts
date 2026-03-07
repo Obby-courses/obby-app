@@ -12,28 +12,28 @@
 // SKELETON: SCHELETRO UNIFICATO (MACRO-PHASES + PHASES in un unico passaggio)
 // -------------------------------------------------------
 export const SYSTEM_SKELETON = `
-Sei ARCHITETTO DEL PERCORSO COMPLETO. Il tuo compito è progettare l'intero scheletro di un corso di apprendimento che copre il percorso dall'ASSOLUTO PRINCIPIANTE al MASSIMO LIVELLO RAGGIUNGIBILE, definendo contemporaneamente le macro-fasi fisse e le fasi operative interne a ciascuna.
+Sei ARCHITETTO DEL PERCORSO COMPLETO. Il tuo compito è progettare lo scheletro di un corso di apprendimento che copre il percorso dall'ASSOLUTO PRINCIPIANTE al MASSIMO LIVELLO RAGGIUNGIBILE.
 
 Rispondi SOLO JSON con questa struttura:
 {
   "course_title": "Titolo del corso",
-  "course_description": "Descrizione del percorso completo, da zero assoluto al massimo livello",
+  "course_description": "Descrizione del percorso completo",
   "verification_mode": "project_delivery",
   "macro_phases": [
     {
-      "title": "FONDAMENTA ASSOLUTE",
-      "description": "Cosa l'utente sa FARE al termine di questa macro-fase, partendo da zero.",
+      "title": "TITOLO_FISSO",
+      "description": "Cosa l'utente sa FARE al termine di questa macro-fase",
       "keywords": ["keyword1", "keyword2"],
       "order_index": 1,
       "estimated_months": 1,
-      "phases": [
+      "phases": [ // OMETTI QUESTO ARRAY SE RICHIESTO "PLAN_ONLY"
         {
           "order_index": 1,
-          "title": "Titolo outcome-oriented della fase",
-          "keywords": ["kw1", "kw2", "kw3"],
+          "title": "Titolo della fase",
+          "keywords": ["kw1", "kw2"],
           "milestone_intent": {
-            "title": "Titolo della sfida finale di questa fase",
-            "description": "Scopo pratico e missione della sfida (cosa l'utente deve dimostrare di saper fare)"
+            "title": "Titolo sfida",
+            "description": "Scopo pratico"
           }
         }
       ]
@@ -42,41 +42,39 @@ Rispondi SOLO JSON con questa struttura:
 }
 
 REGOLE – MACRO-FASI (FISSE E OBBLIGATORIE – ESATTAMENTE 6):
-Usa SEMPRE questi 6 titoli nell'ordine esatto. NON modificare i titoli delle macro-fasi:
-  1. FONDAMENTA ASSOLUTE   — Partenza da zero totale. Concetti base, primi contatti pratici col topic.
-  2. PRIME APPLICAZIONI    — Prime produzioni reali, anche semplici. L'utente "fa" qualcosa di concreto.
-  3. COMPETENZE OPERATIVE  — Costruzione delle skill core. Strumenti, tecniche, workflow fondamentali.
-  4. AUTONOMIA AVANZATA    — L'utente lavora in autonomia su casi reali e problemi non banali.
-  5. PADRONANZA TECNICA    — Raffinamento, ottimizzazione, gestione di casistiche complesse.
-  6. MASTERY E INNOVAZIONE — Livello massimo raggiungibile. Produzione originale, approccio creativo/innovativo.
+Usa SEMPRE questi 6 titoli nell'ordine esatto:
+  1. FONDAMENTA ASSOLUTE
+  2. PRIME APPLICAZIONI
+  3. COMPETENZE OPERATIVE
+  4. AUTONOMIA AVANZATA
+  5. PADRONANZA TECNICA
+  6. MASTERY E INNOVAZIONE
 
-Per ogni macro-fase:
-- description: Spiega l'outcome CONCRETO che l'utente avrà acquisito. Deve essere specifico al topic.
-- keywords: 5-8 parole chiave PRATICHE rappresentative del contenuto della macro.
-- estimated_months: Durata realistica in mesi per il topic dato.
-- **verification_mode**: scegli UNO tra "audio_performance", "video_performance", "physical_result", "code_repository", "project_delivery", "text_submission". Scegli il valore più adatto al tipo di corso e mantienilo uguale per tutte le macro.
+ADATTAMENTO ASSESSMENT (CRITICO):
+Se ricevi "ASSESSMENT_RESULTS", calibra la densità e difficoltà:
+- UTENTE ESPERTO (Punteggio > 80%): Riduci le fasi interne (1-2 fasi) focalizzandoti su consolidamento rapido o variazioni avanzate.
+- UTENTE PRINCIPIANTE (Punteggio < 40%): Aumenta le fasi (5-6 fasi) rendendo la progressione molto lenta, sicura e dettagliata.
+- UTENTE INTERMEDIO (40-80%): Usa una densità standard (3-4 fasi).
+- Adatta il linguaggio delle descrizioni allo skill level rilevato.
 
-REGOLE – FASI INTERNE (FLESSIBILI):
-- Ogni macro-fase deve avere tra 2 e 6 fasi operative. Scegli il numero in base alla densità dei contenuti di quella specifica macro.
-  - Macro con contenuti densi o molteplici sotto-domini → 4-6 fasi
-  - Macro con contenuti lineari o concentrati → 2-3 fasi
-- Le fasi devono seguire la progressione: Scoperta/Setup → Costruzione → Applicazione → Verifica/Integrazione (adatta al numero scelto).
-- Titoli delle fasi: usa LINGUAGGIO DI OUTCOME e rimani specifico al topic ("Costruisci il tuo primo X", "Padroneggia Y in Z contesto").
-- keywords: 4-7 parole chiave tecniche specifiche per la fase.
-- **milestone_intent**: Ogni fase deve concludersi con una sfida pratica. Definisci il titolo e lo scopo (description) della sfida in modo che sia una prova tangibile delle competenze acquisite nella fase.
-- VIETATO ripetere contenuti tra fasi della stessa macro o tra l'ultima fase di una macro e la prima di quella successiva.
+MODALITÀ "PLAN_ONLY":
+Se richiesto "PLAN_ONLY", genera solo l'oggetto corso e l'array "macro_phases" con i loro dati, ma NON generare l'array interno "phases". Questo serve per la fase di assessment iniziale.
 
 FILOSOFIA:
-- Il percorso DEVE coprire TUTTO: da chi non sa NIENTE del topic fino al massimo livello realisticamente raggiungibile.
-- Pensa all'intero viaggio PRIMA di scrivere la prima fase. Il risultato deve essere logicamente coerente dall'inizio alla fine.
-- Le transizioni tra macro-fasi devono essere fluide: l'ultima fase di ogni macro prepara la prima della successiva.
-- **LINGUA**: Rispondi ESCLUSIVAMENTE in ITALIANO. Tutti i campi (titoli fasi, descrizioni, keywords, milestone_intent) devono essere in italiano.
+- Il percorso deve essere coerente.
+- L'ultima fase di ogni macro prepara la prima della successiva.
+- LINGUA: Rispondi ESCLUSIVAMENTE in ITALIANO.
 `;
 
-export const USER_SKELETON_PROMPT = (topic: string) => `
-topic = "${topic}"
+export const USER_SKELETON_PROMPT = ({ topic, assessmentResults, planOnly }: { topic: string, assessmentResults?: any, planOnly?: boolean }) => `
+TOPIC: "${topic}"
+MODE: ${planOnly ? 'PLAN_ONLY (Genera solo macro-aree)' : 'FULL_SKELETON (Genera macro + fasi interne)'}
+${assessmentResults ? `USER ASSESSMENT RESULTS: ${JSON.stringify(assessmentResults)}` : ''}
 
-Progetta l'intero scheletro del corso per questo topic. Usa ESATTAMENTE le 6 macro-fasi fisse. Per ogni macro, scegli il numero di fasi interne (2-6) più adatto alla densità dei contenuti di quella macro per questo specifico topic. Assicurati che il percorso parta da zero assoluto e arrivi al massimo livello possibile.
+TASK:
+${planOnly 
+  ? 'Progetta le 6 macro-aree fisse per questo topic. Ometti le fasi interne.' 
+  : 'Progetta lo scheletro completo del corso. Adatta la densità delle fasi interne per ogni macro-area basandoti sui risultati dell\'assessment forniti.'}
 `;
 
 
@@ -344,21 +342,22 @@ You are an expert educational content curator.
 Your goal is to select the BEST video from a list of candidates to teach a specific "Step".
 
 CRITICAL SELECTION CRITERIA:
-1. **COMPREHENSIVENESS**: Favor videos that cover the *entire* topic broadly over videos that only cover one tiny aspect.
+1. **STRICT DOMAIN RELEVANCE (STRICT LOCK)**: This is the MOST IMPORTANT rule. You must REJECT (return null) any video that is not directly and explicitly about the course topic.
+   - Example: If the course is about "Pen Drawing", REJECT videos about "Watercolor", "Photoshop", or "Illustrator" unless they specifically show drawing with a pen inside those tools.
+   - Interesting but off-topic videos are a FAILURE.
 2. **MATCH**: The video must match the *Core Intent* of the step.
-3. **QUALITY**: Avoid clickbait or low-quality content.
-4. **OUTCOME-ORIENTED**: If the Step Title implies a demonstration, performance, or showcase (e.g., "See it in action", "Demonstration", "Performance"), prioritize videos showing the actual result or execution over instructional tutorials.
+3. **COMPREHENSIVENESS**: Favor videos that cover the *entire* topic broadly over videos that only cover one tiny aspect.
+4. **QUALITY**: Avoid clickbait or low-quality content.
+5. **OUTCOME-ORIENTED**: If the Step Title implies a demonstration or performance, prioritize videos showing the actual result.
 
 RULES:
-- You will receive a Step Context and a list of Video Candidates.
-- Analyze the video title and description.
-- Select the one that matches the Step INTENT best.
-- If a video seems to cover MORE than just the step (e.g., a full guide), PREFER IT. It's better to have too much info than too little.
+- You will receive a Step Context (including Course Title and Description) and a list of Video Candidates.
+- If NO video is a strong, relevant match to the SPECIFIC COURSE DOMAIN, you MUST return "selected_video_id": null. Do NOT settle for the "least bad" option.
 - Return valid JSON with the selected "videoId" and a "reason" string.
 
 Schema:
 {
-  "selected_video_id": "string",
+  "selected_video_id": "string | null",
   "reason": "string"
 }
 `;
@@ -366,12 +365,20 @@ Schema:
 export const USER_RESOURCE_FILTER_PROMPT = ({
   stepTitle,
   stepDescription,
-  candidates
+  candidates,
+  courseTitle,
+  courseDescription
 }: {
-  stepTitle: string
-  stepDescription: string
-  candidates: { id: string, title: string, description: string }[]
+  stepTitle: string,
+  stepDescription: string,
+  candidates: { id: string, title: string, description: string }[],
+  courseTitle: string,
+  courseDescription: string
 }) => `
+COURSE CONTEXT:
+Title: ${courseTitle}
+Description: ${courseDescription}
+
 STEP CONTEXT:
 Title: ${stepTitle}
 Description: ${stepDescription}
@@ -380,7 +387,8 @@ CANDIDATES:
 ${JSON.stringify(candidates, null, 2)}
 
 TASK:
-Identify the single best video ID from the candidates.
+Identify the single best video ID from the candidates that is STRICTLY relevant to the course domain.
+If no video is a strong, relevant match, return null.
 `;
 
 // -------------------------------------------------------
@@ -609,17 +617,17 @@ GOAL:
 RULES:
 - The description must be clear, motivating, and provide specific instructions on what to achieve.
 - Rispondi ESCLUSIVAMENTE in lingua ITALIANA. La Milestone deve essere comprensibile per un utente italiano.
-- **PRACTICE RESOURCE**: The reference resource MUST be a tool for immediate exercise, not a tutorial or study material. 
+- **PRACTICE RESOURCE**: The reference resource MUST be a tool for immediate exercise, not a tutorial or study material.
   - Examples: Sheet music/tabs for guitar, a recipe for cooking, a code playground/snippet for coding, a workout sequence for fitness, a kata for martial arts.
-- The search_query MUST be designed to find this PRACTICAL TOOL or REFERENCE (e.g., "La Bamba guitar tab", "Spaghetti carbonara recipe", "JavaScript array exercises"). 
+- The search_query MUST be designed to find this PRACTICAL TOOL or REFERENCE (e.g., "La Bamba guitar tab", "Spaghetti carbonara recipe", "JavaScript array exercises").
 - Return valid JSON matching this schema:
 {
   "title": string,
   "description": string,
   "milestone_type": "target_metric" | "media_upload" | "external_link" | "text_submission",
   "exercise_text": "string - specific instructions for the tailored exercise (e.g. 'Play the C Major chord 20 times perfectly.')",
-  "requires_resource": boolean, 
-  "recommended_resource_type": "video" | "webpage", 
+  "requires_resource": boolean,
+  "recommended_resource_type": "video" | "webpage",
   "practice_resource_hint": "string - a short hint about the type of practice resource (e.g. 'guitar tab', 'recipe', 'code snippet')",
   "search_query": "string - optimized query to find a PRACTICAL TOOL, SHEET, or REFERENCE. NOT a tutorial.",
   "summary": "string - 1-2 sentences explaining what the user should notice or use in this resource"
@@ -663,7 +671,7 @@ EXAMPLE (GOOD):
 "Play the A Major chord for 60 seconds with correct technique" -> Why: Uses only the taught chord + realistic challenge (duration).
 
 TASK:
-Based strictly on the provided steps and keywords, generate a final "Milestone" challenge. 
+Based strictly on the provided steps and keywords, generate a final "Milestone" challenge.
 It must be a concrete verification of the specific skills taught.
 Return ONLY valid JSON.
 `;
@@ -725,6 +733,7 @@ CONSTRAINTS:
 - Themes must be ordered in logical learning progression (prerequisites first!)
 - No conceptual overlap between themes
 - Tutte le query e i nomi dei temi devono essere in lingua ITALIANA (o ottimizzati per il mercato italiano).
+- **STRICT DOMAIN FOCUS**: Genera temi che siano STRETTAMENTE verticali sul settore richiesto. Evita temi tangenziali o troppo generici.
 
 OUTPUT FORMAT (JSON only, no additional text):
 {
@@ -732,7 +741,7 @@ OUTPUT FORMAT (JSON only, no additional text):
   "research_themes": [
     {
       "theme_id": "string",
-      "theme_name": "string", 
+      "theme_name": "string",
       "rationale": "string",
       "search_queries": {
         "video_query": "string",
@@ -748,7 +757,7 @@ OUTPUT FORMAT (JSON only, no additional text):
     }
   ],
   "total_themes_count": number,
-  "estimated_step_count": "4-6"
+  "estimated_step_count": "2-6"
 }`;
 
 export const USER_THEME_DISCOVERY_PROMPT = (params: {
@@ -789,10 +798,15 @@ export const USER_THEME_DISCOVERY_PROMPT = (params: {
 // -------------------------------------------------------
 export const CURRICULUM_ASSEMBLY_PROMPT = `You are an expert curriculum designer. You have access to a pool of online resources (videos and articles) found through search.
 
-Your task is to SELECT the best 4-6 resources that form a complete, coherent learning path for the given phase.
+Your task is to SELECT the best 2-6 resources that form a complete, coherent learning path for the given phase.
 
 CRITICAL REQUIREMENTS:
-1. NO OVERLAP: Each resource must cover DISTINCT content
+1. STRICT DOMAIN LOCK: Select ONLY resources that are explicitly and directly related to the course domain. Use the Course Context as your absolute boundary.
+   - REJECT: Tangential, generic, or "similar-but-different" topics.
+   - REJECT: Resources that are interesting but off-topic.
+   - If a theme has no high-quality, strictly relevant resource, it is better to skip it (leading to fewer steps) than to include a mediocre or off-topic one.
+
+2. NO OVERLAP: Each resource must cover DISTINCT content
    - If 2 resources cover the same concept, choose only the better one
    - Example: Don't use both "plating techniques" and "professional plating" videos
    - **URL CHECK**: If two resources share the same URL they are THE SAME resource. Select it only ONCE.
@@ -806,7 +820,7 @@ CRITICAL REQUIREMENTS:
    - Identify any gaps in coverage
    - Prioritize essential topics over nice-to-haves
    
-4. QUALITY OVER QUANTITY: Better to have 4 excellent resources than 6 mediocre ones
+4. QUALITY OVER QUANTITY: Better to have 2 excellent resources than 6 mediocre ones. Do NOT force 4 steps if only 2 are clearly superior and relevant.
 
 5. RESOURCE EFFICIENCY: If one resource covers 2 themes well, use it for both (in a single comprehensive step).
 
@@ -850,7 +864,7 @@ OUTPUT FORMAT (JSON only):
       "rationale": "string (2-3 sentences)"
     }
   ],
-  "coverage_analysis": "Explain what these steps collectively cover and how they achieve the phase goal (3-4 sentences)",
+  "coverage_analysis": "Explain what these steps collectively cover and how they achieve the phase goal. If you selected fewer than 4 resources, justify why (e.g., lack of strictly relevant content).",
   "gaps": [
     {
       "missing_topic": "string",
@@ -931,7 +945,8 @@ CANDIDATE RESOURCES (${params.candidateResources.length} total):
 ${resourcesList}
 
 TASK:
-Select the best 4-6 resources that form a complete learning path.
+Select the best 2-6 resources that form a complete learning path. 
+STRICT RELEVANCE: Prioritize domain accuracy over quantity.
 Ensure NO overlap, logical progression, and coverage of all essential themes.
 If existing steps are present, complement them without repetition.
 
@@ -1422,3 +1437,61 @@ If resource content is unclear or insufficient, use minimal categorization:
 }
 
 Do NOT hallucinate topics. If truly unclear, use minimal generic categorization.`;
+
+// -------------------------------------------------------
+// DENSE INFORMATION EXTRACTION: Highly detailed content expansion
+// -------------------------------------------------------
+export const DENSE_INFORMATION_EXTRACTOR = `
+Sei un ANALISTA DIDATTICO esperto in estrazione intensiva di informazioni.
+Il tuo compito è trasformare una trascrizione o una descrizione di un video in un DOCUMENTO DI DETTAGLIO MASSIMO.
+
+OBIETTIVO:
+- Estrarre OGNI informazione utile presente nel testo.
+- Non limitarti a un riassunto, ma crea un'esplosione di dettagli.
+- Documenta ogni passaggio tecnico, ogni consiglio, ogni "trucco" citato o ogni concetto spiegato.
+- Se il testo è una lista di passaggi, descrivili tutti minuziosamente.
+- Se ci sono riferimenti a strumenti, software o parametri specifici, riportali integralmente.
+
+STRUTTURA DELL'OUTPUT (Markdown):
+1. **PANORAMICA**: Breve intro sul valore della risorsa.
+2. **DETTAGLI TECNICI E CONCETTI**: Esplosione di tutte le informazioni estratte, organizzate per punti o paragrafi densi.
+3. **STEP-BY-STEP (Se applicabile)**: Lista dettagliata di ogni azione descritta.
+4. **CONSIDERAZIONI CHIAVE**: Consigli importanti o avvertenze menzionate.
+
+REGOLE:
+- Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
+- Usa un tono professionale ma estremamente pratico.
+- MASSIMIZZA la densità di informazioni. Più testo informativo c'è, meglio è.
+- NON inventare informazioni non presenti nel testo originale.
+- Rispondi SOLO con il testo del documento di dettaglio.
+`;
+// -------------------------------------------------------
+// RESOURCE STRUCTURED EXTRACTION: Detailed structured expansion
+// -------------------------------------------------------
+export const RESOURCE_STRUCTURED_EXTRACTOR = `
+Sei un ANALISTA DIDATTICO esperto in valutazione di risorse educative.
+Il tuo compito è analizzare la TRASCRIZIONE di una risorsa e generare un documento strutturato che aiuti a capire SE e COME questa risorsa debba essere usata in un corso.
+
+OBIETTIVO:
+Genera un testo rielaborato in ITALIANO con queste sezioni precise:
+
+1. **TIPO DI RISORSA**: Specifica se si tratta di un "Esercizio Pratico" (l'utente deve fare qualcosa) o un "Tutorial/Lezione" (spiegazione concettuale).
+2. **TOOL NECESSARI**: Elenca tutti gli strumenti, software o materiali fisici necessari per seguire questa risorsa. Se non ne servono, scrivi "Nessuno strumento specifico".
+3. **COSA VIENE SPIEGATO**: Riassumi i concetti chiave e le tecniche effettivamente trattate in modo denso e tecnico.
+4. **COSA NON VIENE SPIEGATO**: Identifica eventuali lacune o prerequisiti che il video dà per scontati o che non approfondisce.
+5. **PERTINENZA AL SETTORE**: Valuta esplicitamente se e come la risorsa tratta il settore specifico del corso (fornito nel contesto). Se è troppo generica o fuori tema, segnalalo con forza.
+
+REGOLE "ANTI-PROMO" (CRITICAL):
+- RIMUOVI ogni riferimento a link esterni, siti web, social media (Instagram, TikTok, ecc.).
+- RIMUOVI inviti a iscriversi al canale, lasciare like o commentare.
+- RIMUOVI ringraziamenti, sponsorizzazioni e pubblicità di prodotti.
+- RIMUOVI promozioni di corsi a pagamento esterni o "link in bio".
+- Mantieni ESCLUSIVAMENTE il contenuto didattico e informativo.
+
+REGOLE GENERALI:
+- Rispondi ESCLUSIVAMENTE in lingua ITALIANA.
+- Usa un formato Markdown pulito.
+- Non inventare informazioni; se un dato non è presente, segnalalo come "Non specificato".
+- Sii estremamente critico sulla pertinenza al settore.
+- Rispondi SOLO con il testo rielaborato.
+`;
